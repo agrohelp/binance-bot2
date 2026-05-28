@@ -1,0 +1,20 @@
+# struktura.txt
+/binance-bot2
+│
+├── bot.py
+├── api.py
+├── alert.py
+├── settings.py
+├── requirements.txt
+├── .env
+│
+├── indicators/
+│   ├── ema.py
+│   ├── macd.py
+│   ├── rsi.py
+│   └── stoch.py
+│
+└── strategy/
+    ├── strategy_4h.py
+    ├── timeframe_1h.py
+    └── timeframe_1d.py

@@ -1,0 +1,17 @@
+np. python3 bot.py python3 bot.py  --test-candles
+
+
+python3 bot.py  --test-internet
+python3 bot.py  --test-env
+python3 bot.py  --test-telegram
+python3 bot.py  --test-binance
+python3 bot.py  --test-candles
+python3 bot.py  --test-indicators
+python3 bot.py  --test-strategy
+python3 bot.py  --test-alert
+python3 bot.py  --test-buy
+python3 bot.py  --test-sell
+python3 bot.py  --test-sl   -Stop Los
+python3 bot.py  --test-tp   -Take Profit
+python3 bot.py  --test-ts   -Trailing Stop
+python3 bot.py  --test-all

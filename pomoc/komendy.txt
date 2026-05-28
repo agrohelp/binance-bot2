@@ -1,0 +1,55 @@
+# ===============================
+#  PODSTAWOWE KOMENDY DO BOTA
+#  Usługa: binance_bot.service
+# ===============================
+# Zawsze po zmianie nazwy pliku lub katalogów:
+sudo systemctl daemon-reload
+sudo systemctl restart binance-bot2.service
+sudo journalctl -u binance-bot2.service -f  dane i data systemu
+sudo journalctl -u binance-bot2.service -f -o cat  - dane bez daty systemu OK
+
+---
+
+# ▶️ 1. Uruchomienie bota
+sudo systemctl start binance_bot.service
+
+# ⏹️ 2. Zatrzymanie bota
+sudo systemctl stop binance_bot.service
+
+# 🔄 3. Restart bota (najczęściej używane)
+sudo systemctl restart binance_bot.service
+
+# 📌 4. Sprawdzenie statusu bota
+sudo systemctl status binance_bot.service
+
+# 📜 5. Podgląd logów na żywo (wyjście bota)
+sudo journalctl -u binance_bot.service -f
+
+# 📜 6. Podgląd logów z ostatnich 100 linii
+sudo journalctl -u binance_bot.service -n 100
+
+# 🧹 7. Wyczyść logi systemd (opcjonalnie)
+sudo journalctl --vacuum-size=50M
+
+# 🔧 8. Przeładowanie konfiguracji systemd po zmianie pliku .service
+sudo systemctl daemon-reload
+
+# 🔁 9. Włączenie autostartu bota po restarcie systemu
+sudo systemctl enable binance_bot.service
+
+# 🚫 10. Wyłączenie autostartu
+sudo systemctl disable binance_bot.service
+
+# ===============================
+#  KOMENDY DODATKOWE
+# ===============================
+
+# ▶️ Ręczne uruchomienie bota bez systemd (debug)
+venv/bin/python bot.py
+
+# ▶️ Sprawdzenie, czy venv działa
+which python
+which pip
+
+# ▶️ Instalacja zależności (gdyby trzeba było)
+venv/bin/python -m pip install -r requirements.txt

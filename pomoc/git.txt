@@ -1,0 +1,52 @@
+==Nowe repositorium
+echo "# binance-bot2" >> README.md
+git init
+git add README.md
+git commit -m "first commit"
+git branch -M main
+git remote add origin https://github.com/agrohelp/binance-bot2.git
+git push -u origin main
+
+==PUSH dla istniejacego repo
+git remote add origin https://github.com/agrohelp/binance-bot2.git
+git branch -M main
+git push -u origin main
+
+===PAMIETAJ dodac w kat. projektu plik .gitignore , np.
+wszystko co nie powinno trafić na gitHub:
+Plik .gitignore
+
+# --- ŚRODOWISKO PYTHON ---
+venv/
+env/
+ENV/
+.venv/
+
+# --- PLIKI SYSTEMOWE ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- LOGI ---
+*.log
+logs/
+log/
+
+# --- KONFIGURACJE Z DANYMI WRAŻLIWYMI ---
+config.py
+config.json
+*.env
+.env
+.env.*
+
+# --- PLIKI TYMCZASOWE ---
+*.tmp
+*.temp
+*.bak
+
+# --- WINDOWS / VS CODE ---
+Thumbs.db
+.vscode/
+
+
