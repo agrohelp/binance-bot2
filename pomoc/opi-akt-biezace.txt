@@ -12,6 +12,11 @@ git pull && \
 sudo systemctl restart binance-bot2 && \
 sudo systemctl status binance-bot2 && \
 sudo journalctl -u binance-bot2.service -f -o cat
+
+---po zmianie katalogow i nazw plikow
+sudo systemctl daemon-reload
+sudo systemctl restart binance-bot2.service
+sudo systemctl status binance-bot2.service
 ---
 🟦 Co robi ta komenda?
 ✔ 1. cd /ssd/binance-bot2

@@ -1,0 +1,46 @@
+⭐ v2.0 — ATR Trailing Stop (profesjonalny trailing)
+To będzie:
+
+dynamiczny trailing stop oparty o ATR(14)
+
+automatyczne podciąganie SL w trendzie
+
+brak sztywnego TP — pozycja rośnie, dopóki rynek daje
+
+trailing dostosowany do zmienności (duża zmienność → szeroki SL, mała → wąski)
+
+Efekt:
+Bot przestaje „zamykać za wcześnie” i wyciska trend do końca.
+
+⭐ v2.1 — Dynamiczne filtry trendu (multi-timeframe weighting)
+Zamiast prostego:
+
+trend 1H = UP
+
+trend 4H = UP
+
+trend 1D = UP
+
+Wprowadzimy system wag:
+
+1H → 40%
+
+4H → 40%
+
+1D → 20%
+
+I dopiero suma punktów decyduje o tym, czy trend jest UP czy DOWN.
+
+Efekt:
+Bot staje się odporny na fałszywe sygnały i „szumy” na niższych interwałach.
+
+🔥 Jutro dostaniesz:
+pełny kod v2.0
+
+pełny kod v2.1
+
+pełny, kompletny plik strategy_4h.py po każdej zmianie
+
+pełne logowanie trailing stopu
+
+pełne logowanie dynamicznych filtrów trendu

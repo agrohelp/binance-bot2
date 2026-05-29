@@ -1,0 +1,87 @@
+v1.1
+v1.0 jest w pełni stabilne i działa na produkcji
+To jest moment, w którym możemy wejść w v1.1:
+
+✔️ Dodaj pełne logowanie filtrów BUY/SELL
+Zobaczysz dokładnie:
+
+Kod
+BUY rejected:
+ - EMA trend: FAIL
+ - MACD: OK
+ - RSI: OK
+ - STOCH cross: FAIL
+ - Filters 1H/1D: OK
+✔️ Dodaj sanity-check świec
+Ochrona przed dziurami w danych Binance.
+
+✔️ Dodaj FORCE BUY / FORCE SELL
+---
+Kiedy wrócimy, ruszamy z v1.1, czyli:
+
+logowanie filtrów BUY/SELL
+sanity-check świec
+FORCE BUY / FORCE SELL
+i zrobimy z tego bota prawdziwą maszynę do analizy.
+====================
+🔥 Analiza BUY — dlaczego brak sygnału?
+Kod
+EMA trend: FAIL
+MACD: OK
+RSI: OK
+STOCH cross: FAIL
+Trend 1D: OK
+Big trend 1D: OK
+Trend 1H: OK
+Momentum 1H: OK
+RSI trend 1H: OK
+✔ Co jest OK?
+MACD rośnie
+
+RSI zdrowe
+
+1H i 1D są w trendzie wzrostowym
+
+Momentum UP
+
+RSI trend UP
+
+❌ Co blokuje BUY?
+EMA FAST < EMA SLOW + dystans
+→ trend 4H nadal spadkowy
+
+Brak przecięcia STOCH K>D
+→ nie ma sygnału momentum na 4H
+
+To jest prawidłowe odrzucenie sygnału.
+
+🔥 Analiza SELL — dlaczego brak sygnału?
+Kod
+EMA trend (ema_fast < ema_slow): OK
+MACD (macd < macd_signal): FAIL
+RSI (> 30): OK
+STOCH cross (K < D): FAIL
+✔ Co jest OK?
+EMA FAST < EMA SLOW → trend spadkowy
+
+RSI > 30 → nie jest skrajnie wyprzedany
+
+❌ Co blokuje SELL?
+MACD nie jest poniżej sygnału
+
+STOCH nie przecina D od góry
+
+Czyli nie ma sygnału SELL.
+
+🟩 Wniosek: strategia działa perfekcyjnie
+Twoje logi pokazują:
+
+BUY odrzucony z dwóch powodów
+
+SELL odrzucony z dwóch powodów
+
+bot nie generuje fałszywych sygnałów
+
+diagnostyka jest pełna i czytelna
+
+To jest dokładnie to, co chcieliśmy osiągnąć w v1.1

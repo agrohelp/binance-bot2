@@ -1,0 +1,120 @@
+🔥 ARCHITEKTURA BACKTESTU (v1.6)
+Backtest będzie składał się z 3 nowych plików:
+
+1) backtest/loader.py
+Ładuje dane OHLCV z pliku CSV lub z Binance (historycznie).
+
+2) backtest/engine.py
+Silnik backtestu — iteruje po świecach i wywołuje strategię.
+
+3) backtest/run_backtest.py
+Główny plik uruchamiający backtest.
+
+4) Modyfikacja strategy_4h.py
+==================
+🟩 5. Jak uruchomić backtest?
+Przykład:
+
+Kod
+python backtest/run_backtest.py --csv eurusd_4h.csv
+CSV musi mieć kolumny:
+
+Kod
+open_time,open,high,low,close,volume
+🟩 6. Co dostajesz w v1.6?
+✔ pełny silnik backtestu
+✔ możliwość testowania strategii na danych historycznych
+✔ pełna zgodność z logiką live tradingu
+✔ lista transakcji BUY/SELL
+✔ finalny balans
+✔ możliwość testowania różnych parametrów
+===========================
+# backtest/loader.py
+
+import pandas as pd
+
+def load_csv(path: str):
+    """
+    Wczytuje dane OHLCV z pliku CSV.
+    Wymagane kolumny: open_time, open, high, low, close, volume
+    """
+    df = pd.read_csv(path)
+
+    required = ["open_time", "open", "high", "low", "close", "volume"]
+    for col in required:
+        if col not in df.columns:
+            raise ValueError(f"Brak kolumny w CSV: {col}")
+
+    return df
+    =======================
+    # backtest/engine.py
+
+from core.signal import Signal
+
+class BacktestEngine:
+
+    def __init__(self, df, strategy_func, logger):
+        self.df = df
+        self.strategy = strategy_func
+        self.logger = logger
+
+        self.balance = 1000.0
+        self.position = None
+        self.entry_price = None
+        self.trades = []
+
+    def run(self):
+        for i in range(50, len(self.df)):  # 50 świec na indykatory
+            window = self.df.iloc[:i].copy()
+
+            signal = self.strategy(df_override=window)
+
+            if isinstance(signal, Signal):
+                if signal.side == "BUY" and self.position is None:
+                    self.position = "LONG"
+                    self.entry_price = window.iloc[-1]["close"]
+                    self.trades.append(("BUY", self.entry_price))
+
+                elif signal.side == "SELL" and self.position == "LONG":
+                    exit_price = window.iloc[-1]["close"]
+                    profit = exit_price - self.entry_price
+                    self.balance += profit
+                    self.trades.append(("SELL", exit_price, profit))
+                    self.position = None
+                    self.entry_price = None
+
+        return {
+            "final_balance": self.balance,
+            "trades": self.trades,
+            "num_trades": len(self.trades),
+        }
+========================
+
+# backtest/run_backtest.py
+
+from utils.logger import get_logger
+from backtest.loader import load_csv
+from backtest.engine import BacktestEngine
+from strategy.strategy_4h import check_signal
+
+logger = get_logger("BACKTEST")
+
+def run_backtest(csv_path):
+    df = load_csv(csv_path)
+
+    engine = BacktestEngine(
+        df=df,
+        strategy_func=lambda df_override: check_signal(df_override=df_override),
+        logger=logger
+    )
+
+    result = engine.run()
+
+    logger.info("=== BACKTEST WYNIKI ===")
+    logger.info(f"Final balance: {result['final_balance']}")
+    logger.info(f"Liczba transakcji: {result['num_trades']}")
+    logger.info("Transakcje:")
+    for t in result["trades"]:
+        logger.info(str(t))
+============================
+

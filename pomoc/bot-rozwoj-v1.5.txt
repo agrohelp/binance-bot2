@@ -1,3 +1,67 @@
+Karol — wchodzimy w v1.5: SANITY CHECK INDIKATORÓW.
+To jest ostatni brakujący element bezpieczeństwa — teraz bot będzie odporny nie tylko na błędne świece, ale też na:
+
+NaN w indykatorach
+
+wartości nieskończone (inf / -inf)
+
+wartości absurdalne (np. RSI > 100, MACD = 9999)
+
+błędne przecięcia STOCH
+
+błędne EMA (np. EMA_FAST < 0)
+
+I oczywiście — każdy plik zaczyna się identyfikatorem.
+==================
+🟩 4. Co daje sanity-check indykatorów?
+✔ Bot nie zadziała na błędnych danych
+(np. RSI = 200, MACD = NaN, EMA = -5)
+
+✔ Bot nie wygeneruje sygnału przy uszkodzonych indykatorach
+(np. Binance zwróci dziurę w danych)
+
+✔ Bot nie wywali się na INF / NaN
+(np. przy bardzo małej liczbie świec)
+
+✔ Logi będą jasno mówiły, co jest nie tak
+np.:
+
+Kod
+4H: sanity-check indykatorów FAIL → RSI w zakresie 0–100
+==================
+
+# core/indicator_sanity.py
+
+import numpy as np
+
+def sanity_check_indicators(last, logger, tf_name="4H"):
+    """
+    Sprawdza poprawność indykatorów dla ostatniej świecy.
+    Zwraca True jeśli OK, False jeśli wykryto błąd.
+    """
+
+    checks = {
+        "EMA fast > 0": last["ema_fast"] > 0,
+        "EMA slow > 0": last["ema_slow"] > 0,
+        "RSI w zakresie 0–100": 0 <= last["rsi"] <= 100,
+        "MACD nie NaN": not np.isnan(last["macd"]),
+        "MACD signal nie NaN": not np.isnan(last["macd_signal"]),
+        "STOCH K w zakresie 0–100": 0 <= last["stoch_k"] <= 100,
+        "STOCH D w zakresie 0–100": 0 <= last["stoch_d"] <= 100,
+        "MACD nie INF": np.isfinite(last["macd"]),
+        "RSI nie INF": np.isfinite(last["rsi"]),
+        "EMA fast nie INF": np.isfinite(last["ema_fast"]),
+        "EMA slow nie INF": np.isfinite(last["ema_slow"]),
+    }
+
+    # Logowanie diagnostyczne
+    for name, ok in checks.items():
+        if not ok:
+            logger.error(f"{tf_name}: sanity-check indykatorów FAIL → {name}")
+            return False
+
+    return True
+=================
 # strategy/strategy_4h.py
 
 import numpy as np
@@ -12,8 +76,6 @@ from core.sanity import sanity_check_candles
 from core.indicator_sanity import sanity_check_indicators
 from core.force import load_force, clear_force
 from core.trend_logger import log_trend
-from core.watchdog import watchdog_candle_freeze
-from logs.trade_logger import get_trade_logger
 
 from settings import DEBUG
 
@@ -38,49 +100,37 @@ from strategy.timeframe_1d import analyze_1d
 from core.signal import Signal
 
 logger = get_logger(__name__)
-trade_logger = get_trade_logger()
 
 
-def check_signal(df_override=None) -> Signal | None:
+def check_signal() -> Signal | None:
 
     # ─────────────────────────────────────────────
-    # 0) FORCE BUY / FORCE SELL (tylko live)
+    # 0) FORCE BUY / FORCE SELL
     # ─────────────────────────────────────────────
-    if df_override is None:
-        force = load_force()
+    force = load_force()
 
-        if force.get("buy"):
-            logger.warning("FORCE BUY aktywne — generuję BUY bez filtrów!")
-            trade_logger.info("FORCE BUY")
-            clear_force()
-            return Signal(side="BUY", price=None)
+    if force.get("buy"):
+        logger.warning("FORCE BUY aktywne — generuję BUY bez filtrów!")
+        clear_force()
+        return Signal(side="BUY", price=None)
 
-        if force.get("sell"):
-            logger.warning("FORCE SELL aktywne — generuję SELL bez filtrów!")
-            trade_logger.info("FORCE SELL")
-            clear_force()
-            return Signal(side="SELL", price=None)
+    if force.get("sell"):
+        logger.warning("FORCE SELL aktywne — generuję SELL bez filtrów!")
+        clear_force()
+        return Signal(side="SELL", price=None)
 
     # ─────────────────────────────────────────────
     # 1) Świece
     # ─────────────────────────────────────────────
-    if df_override is not None:
-        df = df_override
-    else:
-        try:
-            df = get_klines(SYMBOL, INTERVAL_4H, CANDLES_4H)
-        except Exception as e:
-            logger.error(f"4H get_klines error: {e}")
-            return None
+    try:
+        df = get_klines(SYMBOL, INTERVAL_4H, CANDLES_4H)
+    except Exception as e:
+        logger.error(f"4H get_klines error: {e}")
+        return None
 
     # 1.1) SANITY CHECK ŚWIEC
     if not sanity_check_candles(df, logger, "4H"):
         logger.warning("4H: sanity-check świec nie przeszedł — pomijam cykl")
-        return None
-
-    # 1.2) WATCHDOG — wykrywanie zatrzymania Binance
-    if not watchdog_candle_freeze(df, logger, "4H"):
-        logger.warning("4H: watchdog zatrzymał analizę — brak nowych świec")
         return None
 
     # ─────────────────────────────────────────────
@@ -152,6 +202,7 @@ def check_signal(df_override=None) -> Signal | None:
     # ─────────────────────────────────────────────
     # 4) BUY — pełne logowanie filtrów
     # ─────────────────────────────────────────────
+
     ema_distance = last["ema_fast"] - last["ema_slow"]
     ema_ok = ema_distance > (last["close"] * 0.001)
 
@@ -180,12 +231,12 @@ def check_signal(df_override=None) -> Signal | None:
 
     if all(buy_checks.values()):
         logger.info(f"BUY sygnał 4H @ {price}")
-        trade_logger.info(f"BUY @ {price}")
         return Signal(side="BUY", price=price)
 
     # ─────────────────────────────────────────────
     # 5) SELL — diagnostyka
     # ─────────────────────────────────────────────
+
     sell_checks = {
         "EMA trend (ema_fast < ema_slow)": last["ema_fast"] < last["ema_slow"],
         "MACD (macd < macd_signal)": last["macd"] < last["macd_signal"],
@@ -198,10 +249,6 @@ def check_signal(df_override=None) -> Signal | None:
         for name, result in sell_checks.items():
             logger.info(f" - {name}: {'OK' if result else 'FAIL'}")
 
-    if all(sell_checks.values()):
-        logger.info(f"SELL sygnał 4H @ {price}")
-        trade_logger.info(f"SELL @ {price}")
-        return Signal(side="SELL", price=price)
-
     logger.info("4H: brak sygnału")
     return None
+===============

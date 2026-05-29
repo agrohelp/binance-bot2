@@ -6,10 +6,14 @@
 sudo systemctl daemon-reload
 -- sama zmiana tresci
 sudo systemctl restart binance-bot2.service
+sudo systemctl status binance-bot2.service   -opcjonalnie status
 sudo journalctl -u binance-bot2.service -f  dane i data systemu
 sudo journalctl -u binance-bot2.service -f -o cat  - dane bez daty systemu OK
-
 ---
+sudo systemctl daemon-reload
+sudo systemctl restart binance-bot2.service
+sudo systemctl status binance-bot2.service
+----
 
 # ▶️ 1. Uruchomienie bota
 sudo systemctl start binance_bot.service

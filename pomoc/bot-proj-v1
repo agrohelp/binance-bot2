@@ -19,7 +19,7 @@ binance-bot2/
 │  └─ timeframe_1d.py 11
 └─ state.json   (utworzy się sam)
 ============================
-# /utils/logger.py
+# /utils/logger.py [1]
 import logging
 import os
 from typing import Optional
@@ -51,7 +51,7 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
     logger.propagate = False
     return logger
 ==================================
-# core/signal.py
+# core/signal.py [2]
 from dataclasses import dataclass
 
 
@@ -60,7 +60,7 @@ class Signal:
     side: str   # "BUY" lub "SELL"
     price: float
 ========================
-# core/position.py
+# core/position.py  [3]
 from dataclasses import dataclass, asdict
 from typing import Dict, Any
 
@@ -161,7 +161,7 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
 ==========================
-# alert.py
+# alert.py   [5]
 import requests
 import time
 from utils.logger import get_logger
@@ -244,7 +244,7 @@ def send_trailing_hit(price: float) -> None:
         f"🛑 <b>TRAILING STOP</b>\nCena: <b>{price}</b>"
     )
 =============================
-# indicators/ema.py
+# indicators/ema.py  [6]
 import pandas as pd
 from utils.logger import get_logger
 
@@ -268,7 +268,7 @@ def ema(series: pd.Series, period: int) -> pd.Series:
         logger.error(f"EMA error: {e}")
         return pd.Series([float("nan")] * (len(series) if series is not None else 1))
 =======================
-# indicator/macd.py
+# indicator/macd.py  [7]
 import pandas as pd
 from utils.logger import get_logger
 
@@ -315,7 +315,7 @@ def macd(
             "hist": nan_series
         })
 ==============================
-# indicators/rsi.py
+# indicators/rsi.py  [8]
 import pandas as pd
 from utils.logger import get_logger
 
@@ -347,7 +347,7 @@ def rsi(series: pd.Series, period: int = 14) -> pd.Series:
         logger.error(f"RSI error: {e}")
         return pd.Series([float("nan")] * (len(series) if series is not None else 1))
 ================
-# indicators/stoch.py
+# indicators/stoch.py  [9]
 import pandas as pd
 from utils.logger import get_logger
 
@@ -396,7 +396,7 @@ def stochastic(
             "d": nan_series
         })
 ======================
-# strategy/timeframe_1h.py
+# strategy/timeframe_1h.py  [10]
 
 from utils.logger import get_logger
 
@@ -419,7 +419,7 @@ def analyze_1h() -> dict | None:
         logger.error(f"1H analyze error: {e}")
         return None
 ====================
-# strategy/timeframe_1d.py
+# strategy/timeframe_1d.py  [11]
 
 from utils.logger import get_logger
 
@@ -655,7 +655,7 @@ def get_klines(symbol: str, interval: str, limit: int) -> pd.DataFrame:
     return None
 
 ===================
-# bot.py
+# bot.py  [14]
 import time
 import json
 import os

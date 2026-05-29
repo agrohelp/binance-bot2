@@ -1,3 +1,32 @@
+🟩 4. Co zyskujesz w v1.7?
+✔ czysty dziennik transakcji
+✔ idealne do analizy i statystyk
+✔ idealne do backtestu
+✔ idealne do eksportu do Excela
+✔ idealne do wykresów equity curve
+==================
+# logs/trade_logger.py
+
+import logging
+import os
+
+def get_trade_logger():
+    """
+    Logger zapisujący tylko BUY/SELL do osobnego pliku.
+    """
+    os.makedirs("logs", exist_ok=True)
+
+    logger = logging.getLogger("TRADE_LOGGER")
+    logger.setLevel(logging.INFO)
+
+    if not logger.handlers:
+        fh = logging.FileHandler("logs/trades.log")
+        fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+        fh.setFormatter(fmt)
+        logger.addHandler(fh)
+
+    return logger
+=========
 # strategy/strategy_4h.py
 
 import numpy as np
@@ -12,7 +41,6 @@ from core.sanity import sanity_check_candles
 from core.indicator_sanity import sanity_check_indicators
 from core.force import load_force, clear_force
 from core.trend_logger import log_trend
-from core.watchdog import watchdog_candle_freeze
 from logs.trade_logger import get_trade_logger
 
 from settings import DEBUG
@@ -76,11 +104,6 @@ def check_signal(df_override=None) -> Signal | None:
     # 1.1) SANITY CHECK ŚWIEC
     if not sanity_check_candles(df, logger, "4H"):
         logger.warning("4H: sanity-check świec nie przeszedł — pomijam cykl")
-        return None
-
-    # 1.2) WATCHDOG — wykrywanie zatrzymania Binance
-    if not watchdog_candle_freeze(df, logger, "4H"):
-        logger.warning("4H: watchdog zatrzymał analizę — brak nowych świec")
         return None
 
     # ─────────────────────────────────────────────
@@ -205,3 +228,4 @@ def check_signal(df_override=None) -> Signal | None:
 
     logger.info("4H: brak sygnału")
     return None
+=======
