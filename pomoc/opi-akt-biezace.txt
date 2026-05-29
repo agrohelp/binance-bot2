@@ -1,0 +1,49 @@
+🟩 JEDNA KOMENDA — UPDATE + RESTART BOTA
+Po wykonaniu git PUSH na Laptopie wykonaj git PULL na OPi
+
+=== JEDNA KOMENDA - opis pliku niżej
+./update.sh
+===
+
+===LUB Kopiuj poniżej 1:1:
+---
+cd /binance-bot2 && \
+git pull && \
+sudo systemctl restart binance-bot2 && \
+sudo systemctl status binance-bot2 && \
+sudo journalctl -u binance-bot2.service -f -o cat
+---
+🟦 Co robi ta komenda?
+✔ 1. cd /ssd/binance-bot2
+Wchodzi do katalogu projektu.
+✔ 2. git pull
+Pobiera najnowszy kod z GitHuba.
+✔ 3. sudo systemctl restart bot
+Restartuje usługę systemd → bot startuje na nowej wersji.
+✔ 4. sudo systemctl status bot
+Pokazuje, że bot działa i nie ma błędów.
+5. sudo journalctl -u binance-bot2.service -f -o cat -uruchamia DEBUG
+----
+=============================================================
+===LUB za pomocą komendy: ./update.sh
+Wyjaśniam: W katalogu /ssd/binance-bot2 utworzono plik:
+--
+#!/bin/bash
+
+cd /binance-bot2 || exit
+
+echo ">>> Pobieram najnowszą wersję z GitHub..."
+git pull
+
+echo ">>> Restartuję usługę systemd..."
+sudo systemctl restart binance-bot2
+
+echo ">>> Status usługi:"
+sudo systemctl status binance-bot2 --no-pager
+
+echo ">>> Uruchamianie DEBUGERA:"
+sudo journalctl -u binance-bot2.service -f -o cat
+------
+Zostały mu nadane uprawnienia:
+chmod +x update.sh
+===================

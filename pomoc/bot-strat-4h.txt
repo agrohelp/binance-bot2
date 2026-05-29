@@ -1,0 +1,52 @@
+🟦 Co oznacza „4H: brak sygnału”?
+Twoja strategia 4H ma 5 filtrów BUY:
+
+EMA50 > EMA200 + dystans
+MACD > MACD signal
+RSI < 70
+Stochastic K przecina D od dołu
+Filtry 1H i 1D mówią „UP”
+
+Jeśli choć jeden z nich nie jest spełniony, bot poprawnie mówi:
+
+Kod
+4H: brak sygnału
+Brak sygnału — czekam…
+I to jest dokładnie to, co widzisz.
+=================
+🟦 Zinterpretujmy Twój log (to jest złoto diagnostyczne)
+Kod
+price=1.3014
+ema_fast=1.3372
+ema_slow=1.3784
+macd=-0.0102
+macd_signal=-0.0110
+rsi=39.28
+stoch_k=46.35
+stoch_d=56.46
+I teraz patrzymy na filtry BUY:
+
+1️⃣ EMA FAST > EMA SLOW
+1.3372 > 1.3784 ❌
+→ trend spadkowy
+
+2️⃣ MACD > MACD SIGNAL
+-0.0102 > -0.0110 ✔️
+→ MACD OK
+
+3️⃣ RSI < 70
+39 ✔️
+→ RSI OK
+
+4️⃣ STOCH K przecina D od dołu
+K=46.35
+D=56.46
+→ K < D ❌
+→ brak przecięcia
+
+5️⃣ Filtry 1H/1D (na razie stub)
+Zawsze ✔️
+
+🟦 Wniosek:
+🔥 Brak sygnału jest prawidłowy.
+Strategia działa dokładnie tak, jak powinna.

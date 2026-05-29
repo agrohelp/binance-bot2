@@ -1,44 +1,66 @@
 # api.py
 
-from binance.client import Client
-from binance.exceptions import BinanceAPIException, BinanceRequestException
-import pandas as pd
 import time
-from settings import BINANCE_API_KEY, BINANCE_API_SECRET
+import pandas as pd
+import requests
+from utils.logger import get_logger
 
-client = Client(BINANCE_API_KEY, BINANCE_API_SECRET)
+logger = get_logger(__name__)
+
+BINANCE_URL = "https://api.binance.com/api/v3/klines"
 
 
-def get_client():
-    return client
-
-
-def get_klines(symbol: str, interval: str, limit: int = 300, retries: int = 3) -> pd.DataFrame:
+def get_klines(symbol: str, interval: str, limit: int) -> pd.DataFrame:
     """
-    Stabilne pobieranie klines z Binance z retry/backoff.
+    Pobiera świece z Binance Spot.
+    Zwraca DataFrame z kolumnami:
+    open, high, low, close, volume, open_time, close_time
     """
 
-    for attempt in range(retries):
+    params = {
+        "symbol": symbol,
+        "interval": interval,
+        "limit": limit,
+    }
+
+    for attempt in range(5):
         try:
-            raw = client.get_klines(symbol=symbol, interval=interval, limit=limit)
-            break
+            r = requests.get(BINANCE_URL, params=params, timeout=5)
 
-        except (BinanceAPIException, BinanceRequestException) as e:
-            if attempt == retries - 1:
-                raise e
-            time.sleep(1 + attempt * 2)  # backoff
+            if r.status_code == 429:
+                logger.warning("Binance 429 — rate limit, retry…")
+                time.sleep(2 + attempt)
+                continue
 
-    df = pd.DataFrame(raw, columns=[
-        "open_time", "open", "high", "low", "close", "volume",
-        "close_time", "qav", "num_trades", "taker_base", "taker_quote", "ignore"
-    ])
+            if r.status_code != 200:
+                logger.error(f"Binance HTTP {r.status_code}: {r.text}")
+                time.sleep(1 + attempt)
+                continue
 
-    # konwersja typów
-    float_cols = ["open", "high", "low", "close", "volume"]
-    df[float_cols] = df[float_cols].astype(float)
+            data = r.json()
 
-    # timestamp → datetime
-    df["open_time"] = pd.to_datetime(df["open_time"], unit="ms")
-    df["close_time"] = pd.to_datetime(df["close_time"], unit="ms")
+            if not isinstance(data, list) or len(data) == 0:
+                logger.error("Binance zwrócił pustą listę świec")
+                return None
 
-    return df
+            df = pd.DataFrame(data, columns=[
+                "open_time", "open", "high", "low", "close", "volume",
+                "close_time", "quote_asset_volume", "number_of_trades",
+                "taker_buy_base", "taker_buy_quote", "ignore"
+            ])
+
+            # konwersje
+            df["open"] = df["open"].astype(float)
+            df["high"] = df["high"].astype(float)
+            df["low"] = df["low"].astype(float)
+            df["close"] = df["close"].astype(float)
+            df["volume"] = df["volume"].astype(float)
+
+            return df[["open_time", "open", "high", "low", "close", "volume", "close_time"]]
+
+        except Exception as e:
+            logger.error(f"get_klines error: {e}")
+            time.sleep(1 + attempt)
+
+    logger.error("get_klines: wszystkie próby nieudane")
+    return None

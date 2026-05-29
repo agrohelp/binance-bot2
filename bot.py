@@ -1,20 +1,19 @@
 # bot.py
-
 import time
-import sys
 import json
 import os
+from typing import Optional, Dict, Any, TypedDict
 
+from utils.logger import get_logger
 from settings import (
-    SYMBOL,
     CHECK_SLEEP_SECONDS,
     SL_PERCENT,
     TP_PERCENT,
     TRAILING_PERCENT,
 )
-
 from strategy.strategy_4h import check_signal
-
+from core.signal import Signal
+from core.position import Position
 from alert import (
     send_buy_alert,
     send_sell_alert,
@@ -24,260 +23,121 @@ from alert import (
     send_trailing_hit,
 )
 
+logger = get_logger(__name__)
+
+
+class StateDict(TypedDict):
+    position: Optional[Dict[str, Any]]
+
+
 STATE_FILE = "state.json"
 
 
-# ──────────────────────────────
-#  STAN BOTA (persistencja)
-# ──────────────────────────────
-
-def load_state():
+def load_state() -> StateDict:
     if not os.path.exists(STATE_FILE):
-        return {}
+        logger.info("Brak state.json — tworzę nowy stan.")
+        return {"position": None}
+
     try:
         with open(STATE_FILE, "r") as f:
-            return json.load(f)
-    except Exception:
-        return {}
+            data: Dict[str, Any] = json.load(f)
+
+        pos_data = data.get("position")
+        if pos_data is not None:
+            pos = Position.from_dict(pos_data)
+            return {"position": pos.to_dict()}
+
+        return {"position": None}
+
+    except Exception as e:
+        logger.error(f"Błąd wczytywania state.json: {e}")
+        return {"position": None}
 
 
-def save_state(
-    last_trend_signal,
-    position_side,
-    entry_price,
-    sl_level,
-    tp_level,
-    trailing_stop,
-):
-    state = {
-        "last_trend_signal": last_trend_signal,
-        "position_side": position_side,
-        "entry_price": entry_price,
-        "sl_level": sl_level,
-        "tp_level": tp_level,
-        "trailing_stop": trailing_stop,
-    }
+def save_state(state: StateDict) -> None:
     try:
         with open(STATE_FILE, "w") as f:
-            json.dump(state, f)
+            json.dump(state, f, indent=4)
+        logger.info("Zapisano state.json")
     except Exception as e:
-        print(f"[WARN] Nie mogę zapisać stanu: {e}")
+        logger.error(f"Błąd zapisu state.json: {e}")
 
 
-# ──────────────────────────────
-#  GŁÓWNA PĘTLA BOTA
-# ──────────────────────────────
-
-def main():
-    print("🚀 Start Bot 4H — EMA+MACD+RSI+STOCH (1H/4H/1D)")
-    print(f"💰 Symbol: {SYMBOL}")
-    print("──────────────────────────────")
-
-    # wczytanie stanu
-    state = load_state()
-
-    last_trend_signal = state.get("last_trend_signal", None)  # BUY / SELL / None
-    position_side = state.get("position_side", None)          # "LONG" / None
-    entry_price = state.get("entry_price", None)
-    sl_level = state.get("sl_level", None)
-    tp_level = state.get("tp_level", None)
-    trailing_stop = state.get("trailing_stop", None)
-
-    # sanity cast (JSON → float / None)
-    def _to_float_or_none(v):
-        return float(v) if v is not None else None
-
-    entry_price = _to_float_or_none(entry_price)
-    sl_level = _to_float_or_none(sl_level)
-    tp_level = _to_float_or_none(tp_level)
-    trailing_stop = _to_float_or_none(trailing_stop)
+def main() -> None:
+    logger.info("Bot startuje…")
+    state: StateDict = load_state()
 
     while True:
         try:
-            # prosta odporność: retry na check_signal
-            for attempt in range(3):
-                try:
-                    signal, price = check_signal()
-                    break
-                except Exception as e:
-                    if attempt == 2:
-                        raise
-                    print(f"[WARN] check_signal error (attempt {attempt+1}/3): {e}")
-                    time.sleep(2)
-            else:
-                # nie powinno się zdarzyć
+            signal = check_signal()
+
+            if not isinstance(signal, Signal):
+                logger.info("Brak sygnału — czekam…")
+                time.sleep(CHECK_SLEEP_SECONDS)
                 continue
 
-            print(f"🕒 4H | Cena: {price} | Sygnał: {signal}")
+            price: float = signal.price
 
-            # ──────────────────────────────
-            #  1) Nowy sygnał trendowy
-            # ──────────────────────────────
-            if signal and signal != last_trend_signal:
-                if signal == "BUY":
-                    # otwieramy tylko LONG (bez shortów)
-                    send_buy_alert(SYMBOL, price)
-                    position_side = "LONG"
-                    entry_price = float(price)
-                    sl_level = entry_price * (1 - SL_PERCENT)
-                    tp_level = entry_price * (1 + TP_PERCENT)
-                    trailing_stop = entry_price * (1 - TRAILING_PERCENT)
-                    print(
-                        f"➡️ Ustawiam SL={sl_level:.6f}, "
-                        f"TP={tp_level:.6f}, TS={trailing_stop:.6f}"
-                    )
+            # BUY — wejście
+            if signal.side == "BUY" and state["position"] is None:
+                entry = price
+                sl = entry * (1 - SL_PERCENT)
+                tp = entry * (1 + TP_PERCENT)
+                ts = entry * (1 - TRAILING_PERCENT)
 
-                elif signal == "SELL":
-                    # zamykamy wirtualną pozycję, jeśli była
-                    send_sell_alert(SYMBOL, price)
-                    position_side = None
-                    entry_price = None
-                    sl_level = None
-                    tp_level = None
-                    trailing_stop = None
-
-                last_trend_signal = signal
-
-                # zapis stanu po zmianie trendu / pozycji
-                save_state(
-                    last_trend_signal,
-                    position_side,
-                    entry_price,
-                    sl_level,
-                    tp_level,
-                    trailing_stop,
+                pos = Position(
+                    side="LONG",
+                    entry=entry,
+                    sl=sl,
+                    tp=tp,
+                    ts=ts,
                 )
 
-            # ──────────────────────────────
-            #  2) SL / TP / Trailing stop
-            # ──────────────────────────────
-            if position_side == "LONG" and entry_price is not None:
-                # SL
-                if sl_level is not None and price <= sl_level:
-                    print(f"🛑 SL trafiony @ {price}")
-                    send_sl_alert(SYMBOL, price, sl_level)
-                    position_side = None
-                    entry_price = None
-                    sl_level = None
-                    tp_level = None
-                    trailing_stop = None
+                state["position"] = pos.to_dict()
+                save_state(state)
+                send_buy_alert(entry)
+                logger.info(f"BUY @ {entry}, SL={sl}, TP={tp}, TS={ts}")
 
-                    save_state(
-                        last_trend_signal,
-                        position_side,
-                        entry_price,
-                        sl_level,
-                        tp_level,
-                        trailing_stop,
-                    )
+            # Obsługa otwartej pozycji
+            pos_dict = state["position"]
+            if pos_dict is not None:
+                pos = Position.from_dict(pos_dict)
 
-                # TP
-                elif tp_level is not None and price >= tp_level:
-                    print(f"🎯 TP trafiony @ {price}")
-                    send_tp_alert(SYMBOL, price, tp_level)
-                    position_side = None
-                    entry_price = None
-                    sl_level = None
-                    tp_level = None
-                    trailing_stop = None
+                new_ts = price * (1 - TRAILING_PERCENT)
+                if new_ts > pos.ts:
+                    pos.ts = new_ts
+                    state["position"] = pos.to_dict()
+                    save_state(state)
+                    send_trailing_update(new_ts)
+                    logger.info(f"Trailing stop update: {new_ts}")
 
-                    save_state(
-                        last_trend_signal,
-                        position_side,
-                        entry_price,
-                        sl_level,
-                        tp_level,
-                        trailing_stop,
-                    )
+                if price <= pos.sl:
+                    send_sl_alert(price)
+                    logger.info(f"SL hit @ {price}")
+                    state["position"] = None
+                    save_state(state)
 
-                else:
-                    # TRAILING STOP — aktualizacja (tylko gdy cena rośnie)
-                    if trailing_stop is not None and price > entry_price:
-                        new_ts = price * (1 - TRAILING_PERCENT)
-                        if new_ts > trailing_stop:
-                            trailing_stop = new_ts
-                            print(f"🔄 TS update: {trailing_stop:.6f}")
-                            send_trailing_update(SYMBOL, trailing_stop)
+                elif price >= pos.tp:
+                    send_tp_alert(price)
+                    logger.info(f"TP hit @ {price}")
+                    state["position"] = None
+                    save_state(state)
 
-                            save_state(
-                                last_trend_signal,
-                                position_side,
-                                entry_price,
-                                sl_level,
-                                tp_level,
-                                trailing_stop,
-                            )
+                elif price <= pos.ts:
+                    send_trailing_hit(price)
+                    logger.info(f"TS hit @ {price}")
+                    state["position"] = None
+                    save_state(state)
 
-                    # TRAILING STOP — trafiony
-                    if trailing_stop is not None and price <= trailing_stop:
-                        print(f"🛑 TS trafiony @ {price}")
-                        send_trailing_hit(SYMBOL, price, trailing_stop)
-                        position_side = None
-                        entry_price = None
-                        sl_level = None
-                        tp_level = None
-                        trailing_stop = None
+            time.sleep(CHECK_SLEEP_SECONDS)
 
-                        save_state(
-                            last_trend_signal,
-                            position_side,
-                            entry_price,
-                            sl_level,
-                            tp_level,
-                            trailing_stop,
-                        )
-
+        except KeyboardInterrupt:
+            logger.info("Przerwano ręcznie (CTRL+C). Kończę pracę bota.")
+            break
         except Exception as e:
-            print(f"[ERROR] {e}")
-
-        time.sleep(CHECK_SLEEP_SECONDS)
+            logger.error(f"Błąd głównej pętli: {e}")
+            time.sleep(5)
 
 
 if __name__ == "__main__":
-    from tests import (
-        test_internet,
-        test_env,
-        test_telegram,
-        test_binance,
-        test_candles,
-        test_indicators,
-        test_strategy_simulation,
-        test_alert,
-        test_buy,
-        test_sell,
-        test_sl,
-        test_tp,
-        test_ts,
-        test_all,
-    )
-
-    if "--test-internet" in sys.argv:
-        test_internet()
-    elif "--test-env" in sys.argv:
-        test_env()
-    elif "--test-telegram" in sys.argv:
-        test_telegram()
-    elif "--test-binance" in sys.argv:
-        test_binance()
-    elif "--test-candles" in sys.argv:
-        test_candles()
-    elif "--test-indicators" in sys.argv:
-        test_indicators()
-    elif "--test-strategy" in sys.argv:
-        test_strategy_simulation()
-    elif "--test-alert" in sys.argv:
-        test_alert()
-    elif "--test-buy" in sys.argv:
-        test_buy()
-    elif "--test-sell" in sys.argv:
-        test_sell()
-    elif "--test-sl" in sys.argv:
-        test_sl()
-    elif "--test-tp" in sys.argv:
-        test_tp()
-    elif "--test-ts" in sys.argv:
-        test_ts()
-    elif "--test-all" in sys.argv:
-        test_all()
-    else:
-        main()
+    main()

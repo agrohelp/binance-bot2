@@ -4,6 +4,7 @@
 # ===============================
 # Zawsze po zmianie nazwy pliku lub katalogów:
 sudo systemctl daemon-reload
+-- sama zmiana tresci
 sudo systemctl restart binance-bot2.service
 sudo journalctl -u binance-bot2.service -f  dane i data systemu
 sudo journalctl -u binance-bot2.service -f -o cat  - dane bez daty systemu OK

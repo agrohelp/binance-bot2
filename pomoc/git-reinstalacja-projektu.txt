@@ -1,0 +1,65 @@
+//Reinstalacja  projektu bez zmiany systemu
+---------------
+//Wszystko w jednej komendzie
+🟩 JEDNA KOMENDA — pełny reset i instalacja nowego projektu
+Skopiuj całość 1:1 do terminala Orange Pi:
+--
+sudo systemctl stop binance-bot2 && \
+sudo systemctl disable binance-bot2 && \
+sudo rm -rf /binance-bot2 && \
+cd / && \
+git clone https://github.com/agrohelp/binance-bot2.git && \
+cd binance-bot2 && \
+python3 -m venv venv && \
+source venv/bin/activate && \
+pip install -r requirements.txt && \
+sudo systemctl start binance-bot2 && \
+sudo systemctl enable binance-bot2 && \
+sudo journalctl -u binance-bot2.service -f -o cat
+--
+===== KROK PO KROKU
+🟩 1. Zatrzymanie działającego binance-bot2
+(Twoja usługa = binance-bot2)
+sudo systemctl stop binance-bot2
+
+Sprawdzenie:
+sudo systemctl status binance-bot2
+Powinno być:
+inactive (dead)  - to binance-bot2 jest wyłączony.
+
+🟦 2. Wyłączenie autostartu
+Żeby po restarcie Orange Pi stary binance-bot2 nie wstał:
+sudo systemctl disable binance-bot2
+
+🟩 3. Usunięcie starego projektu
+Przechodzisz do katalogu, gdzie trzymasz projekt:
+cd /
+Usuwasz cały stary katalog:
+sudo rm -rf binance-bot2
+Teraz Orange Pi jest czyste.
+
+🟦 4. (Opcjonalnie) Usunięcie starej usługi systemd, jeśli chcesz ją stworzyć od nowa
+Jeśli chcesz mieć absolutny porządek:
+
+sudo rm /etc/systemd/system/binance-bot2.service
+sudo systemctl daemon-reload
+
+🟩 5. Sklonowanie nowego repo z GitHuba
+cd /
+git clone https://github.com/agrohelp/binance-bot2
+2.git
+cd binance-bot2
+
+🟦 6. Utworzenie venv i instalacja zależności
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+🟩 7. Ponowne włączenie usługi systemd (jeśli ją zostawiłeś)
+sudo systemctl start binance-bot2
+sudo systemctl enable binance-bot2
+sudo journalctl -u binance-bot2.service -f -o cat
+
+Jeśli usunąłeś starą usługę — stworzysz nową (masz gotowy plik, który Ci zrobiłem wcześniej).
+----========================
+
+

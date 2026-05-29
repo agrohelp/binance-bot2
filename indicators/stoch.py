@@ -1,27 +1,48 @@
+# indicators/stoch.py
 import pandas as pd
-import numpy as np
+from utils.logger import get_logger
 
-def stochastic(df, k_period=14, d_period=3, smooth=3):
-    """
-    Stochastic Oscillator (K%D)
-    - zgodne z TradingView
-    - odporne na dzielenie przez zero
-    - smooth = wygładzenie K (SMA)
-    """
+logger = get_logger(__name__)
 
-    low_min = df["low"].rolling(k_period).min()
-    high_max = df["high"].rolling(k_period).max()
 
-    # ochrona przed dzieleniem przez zero
-    range_ = (high_max - low_min).replace(0, np.nan)
+def stochastic(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    k_period: int = 14,
+    d_period: int = 3
+) -> pd.DataFrame:
+    try:
+        if (
+            high is None or low is None or close is None
+            or len(high) < k_period
+            or len(low) < k_period
+            or len(close) < k_period
+        ):
+            logger.warning(
+                f"STOCH: za mało danych (len={len(close) if close is not None else 0})"
+            )
+            nan_series = pd.Series([float("nan")] * (len(close) if close is not None else 1))
+            return pd.DataFrame({
+                "k": nan_series,
+                "d": nan_series
+            })
 
-    # %K surowe
-    k_raw = 100 * (df["close"] - low_min) / range_
+        lowest_low = low.rolling(k_period).min()
+        highest_high = high.rolling(k_period).max()
 
-    # wygładzenie K (SMA)
-    k_smooth = k_raw.rolling(smooth).mean()
+        k = 100 * (close - lowest_low) / (highest_high - lowest_low).replace(0, float("nan"))
+        d = k.rolling(d_period).mean()
 
-    # linia %D (SMA z K)
-    d = k_smooth.rolling(d_period).mean()
+        return pd.DataFrame({
+            "k": k,
+            "d": d
+        })
 
-    return k_smooth, d
+    except Exception as e:
+        logger.error(f"STOCH error: {e}")
+        nan_series = pd.Series([float("nan")] * (len(close) if close is not None else 1))
+        return pd.DataFrame({
+            "k": nan_series,
+            "d": nan_series
+        })

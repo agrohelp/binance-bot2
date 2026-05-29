@@ -1,8 +1,15 @@
+==Na codzien roboczo
+git status    - sprawdz co sie zmienilo, jaki plik ( opcjonalnie)
+git add .  - wszystkie zmienione lub np. git add bot.py
+git commit -m "opis"
+git push
+--------------------
+
 ==Nowe repositorium
 echo "# binance-bot2" >> README.md
 git init
-git add README.md
-git commit -m "first commit"
+git add .
+git commit -m "Bot V2.0 pierwsz commit"
 git branch -M main
 git remote add origin https://github.com/agrohelp/binance-bot2.git
 git push -u origin main
@@ -11,6 +18,7 @@ git push -u origin main
 git remote add origin https://github.com/agrohelp/binance-bot2.git
 git branch -M main
 git push -u origin main
+===============================================================
 
 ===PAMIETAJ dodac w kat. projektu plik .gitignore , np.
 wszystko co nie powinno trafić na gitHub:

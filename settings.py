@@ -1,74 +1,73 @@
 # settings.py
-
 import os
 from dotenv import load_dotenv
 
+# Wczytaj zmienne z pliku .env
 load_dotenv()
 
-# ─────────────────────────────────────────────
-#  API / TELEGRAM
-# ─────────────────────────────────────────────
-BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
-BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET")
+# W trybie produkcyjnym bot ma być czysty, lekki, nie spamować logów.
+# W trybie debug chcesz widzieć wszystko: EMA, MACD, RSI, STOCH,
+# powody odrzucenia sygnału.
+DEBUG = True # włącza/wyłącza DEBUGI w kodzie
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # ─────────────────────────────────────────────
-#  SYMBOL I INTERWAŁY
+# SYMBOL / INTERWAŁY
 # ─────────────────────────────────────────────
+
 SYMBOL = "XRPUSDC"
 
 INTERVAL_4H = "4h"
-INTERVAL_1H = "1h"
-INTERVAL_1D = "1d"
-
-# Ilość świec — dopasowane do EMA200 i MACD
 CANDLES_4H = 300
-CANDLES_1H = 300
-CANDLES_1D = 300   # min. 250 dla EMA200
 
 # ─────────────────────────────────────────────
-#  EMA
+# EMA
 # ─────────────────────────────────────────────
+
 EMA_FAST = 50
 EMA_SLOW = 200
 
 # ─────────────────────────────────────────────
-#  MACD (spójne dla 1H / 4H / 1D)
+# MACD
 # ─────────────────────────────────────────────
+
 MACD_FAST = 12
 MACD_SLOW = 26
 MACD_SIGNAL = 9
 
 # ─────────────────────────────────────────────
-#  RSI
+# RSI
 # ─────────────────────────────────────────────
+
 RSI_PERIOD = 14
-
-# 4H — filtry trendowe
-RSI_OVERBOUGHT_4H = 65
-RSI_OVERSOLD_4H = 35
-
-# 1H — momentum
-RSI_1H_UP = 55
-RSI_1H_DOWN = 45
+RSI_OVERBOUGHT_4H = 70
+RSI_OVERSOLD_4H = 30
 
 # ─────────────────────────────────────────────
-#  STOCHASTIC
+# STOCH
 # ─────────────────────────────────────────────
+
 STO_K = 14
 STO_D = 3
 STO_SMOOTH = 3
 
 # ─────────────────────────────────────────────
-#  SL / TP / TRAILING STOP
+# RISK MANAGEMENT
 # ─────────────────────────────────────────────
-SL_PERCENT = 0.03        # 3%
-TP_PERCENT = 0.08        # 8%
-TRAILING_PERCENT = 0.03  # 3%
+
+SL_PERCENT = 0.02
+TP_PERCENT = 0.04
+TRAILING_PERCENT = 0.01
 
 # ─────────────────────────────────────────────
-#  CZĘSTOTLIWOŚĆ SPRAWDZANIA
+# GŁÓWNA PĘTLA
 # ─────────────────────────────────────────────
-CHECK_SLEEP_SECONDS = 300  # 5 minut
+
+CHECK_SLEEP_SECONDS = 10
+
+# ─────────────────────────────────────────────
+# TELEGRAM — pobierane z .env
+# ─────────────────────────────────────────────
+
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")

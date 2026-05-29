@@ -1,0 +1,214 @@
+v1 — Stabilizacja i porządek (konkretny plan)
+|
+Element | Co daje |
+| --- | --- |
+| **Ujednolicone logi** | pełna kontrola, łatwe debugowanie |
+| **Klasa Position** | czysty bot, łatwa rozbudowa |
+| **Walidacja state.json** | odporność na błędy i restarty |
+| **Obiekt Signal** | czytelne sygnały, łatwy backtest |
+| **Lepsze alerty** | pełna widoczność pracy bota |
+| **Testy integracyjne** | pewność działania |
+
+To jest etap, który robi różnicę między „skryptem” a „systemem”.
+
+1) Ujednolicone logowanie (must‑have)
+Obecnie każdy plik konfiguruje logowanie osobno.
+To jest chaos — w produkcji tak się nie robi.
+
+Co robimy:
+Tworzymy plik:
+utils/logger.py
+
+W nim funkcja:
+
+python
+import logging
+
+def get_logger(name):
+    logger = logging.getLogger(name)
+    if not logger.handlers:
+        handler = logging.FileHandler("bot.log")
+        formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+    return logger
+W każdym module:
+
+python
+from utils.logger import get_logger
+logger = get_logger(__name__)
+Efekt:
+Jeden spójny system logów.
+
+Zero duplikacji.
+
+Logi czytelne jak w prawdziwych systemach tradingowych.
+
+2) Klasa Position — porządek w logice SL/TP/TS
+Obecnie bot.py ma:
+
+50+ linii ifów,
+
+powtarzanie kodu,
+
+trudne debugowanie.
+
+Co robimy:
+Tworzymy plik:
+
+core/position.py
+
+I klasę:
+
+python
+class Position:
+    def __init__(self, entry, sl, tp, ts):
+        self.entry = entry
+        self.sl = sl
+        self.tp = tp
+        self.ts = ts
+        self.side = "LONG"
+        self.closed = False
+
+    def update_trailing(self, price, trailing_percent):
+        if price > self.entry:
+            new_ts = price * (1 - trailing_percent)
+            if new_ts > self.ts:
+                self.ts = new_ts
+                return "TS_UPDATE"
+        return None
+
+    def check_exit(self, price):
+        if price <= self.sl:
+            self.closed = True
+            return "SL"
+        if price >= self.tp:
+            self.closed = True
+            return "TP"
+        if price <= self.ts:
+            self.closed = True
+            return "TS"
+        return None
+Efekt:
+bot.py staje się 3× krótszy.
+
+Logika pozycji jest w jednym miejscu.
+
+Łatwo dodać nowe funkcje (np. break-even stop).
+
+3) Walidacja state.json
+Obecnie:
+
+jeśli plik się uszkodzi → bot startuje z pustym stanem,
+
+jeśli wartości są stringami → mogą być błędy.
+
+Co robimy:
+Tworzymy:
+
+core/state.py
+
+Z funkcjami:
+
+load_state()
+
+validate_state()
+
+repair_state()
+
+save_state()
+
+Efekt:
+bot nigdy nie wystartuje z uszkodzonym stanem,
+
+trailing stop nie będzie NaN,
+
+entry_price zawsze float.
+
+4) Uporządkowanie check_signal()
+Twoja strategia jest dobra, ale:
+
+za dużo logiki w jednej funkcji,
+
+brak struktury sygnału.
+
+Co robimy:
+Tworzymy obiekt sygnału:
+
+python
+class Signal:
+    def __init__(self, side, price, reason):
+        self.side = side
+        self.price = price
+        self.reason = reason
+I check_signal() zwraca:
+
+python
+return Signal("BUY", price, "EMA cross + MACD + RSI + STOCH + filters")
+Efekt:
+bot może logować dlaczego wszedł w pozycję,
+
+łatwiej debugować,
+
+łatwiej robić backtest.
+
+5) Uporządkowanie alertów
+Obecnie alerty są OK, ale:
+
+brak informacji o powodach sygnału,
+
+brak alertów diagnostycznych.
+
+Co robimy:
+Dodajemy:
+
+alert o starcie bota,
+
+alert o reconnect,
+
+alert o błędach Binance,
+
+alert o zmianie trendu 1D.
+
+Efekt:
+pełna kontrola nad botem,
+
+wiesz, co robi, nawet gdy nie patrzysz.
+
+6) Testy integracyjne (proste, ale ważne)
+Tworzymy:
+
+tests/test_strategy_flow.py
+
+Testy:
+
+BUY → SL
+
+BUY → TP
+
+BUY → TS update → TS hit
+
+brak sygnału gdy NaN
+
+brak sygnału gdy brak danych 1H/1D
+
+Efekt:
+pewność, że bot działa po każdej zmianie.
+
+7) Przygotowanie pod backtest (v2)
+W v1 robimy tylko fundament:
+
+Position działa niezależnie od bota,
+
+Signal działa niezależnie od bota,
+
+check_signal() działa na DataFrame, nie na Binance.
+
+Efekt:
+backtest w v2 będzie prosty jak:
+
+python
+for candle in history:
+    signal = check_signal(candle)
+    position.update(...)

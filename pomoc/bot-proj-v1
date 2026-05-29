@@ -1,0 +1,801 @@
+binance-bot2/
+├─ bot.py 14
+├─ settings.py 4
+├─ api.py 13
+├─ alert.py 5
+├─ core/
+│  ├─ signal.py 2
+│  └─ position.py 3
+├─ utils/
+│  └─ logger.py 1
+├─ indicators/
+│  ├─ ema.py 6
+│  ├─ macd.py 7
+│  ├─ rsi.py 8
+│  └─ stoch.py 9
+├─ strategy/
+│  ├─ strategy_4h.py 12
+│  ├─ timeframe_1h.py 10
+│  └─ timeframe_1d.py 11
+└─ state.json   (utworzy się sam)
+============================
+# /utils/logger.py
+import logging
+import os
+from typing import Optional
+
+
+def get_logger(name: Optional[str] = None) -> logging.Logger:
+    logger = logging.getLogger(name if name else "bot")
+
+    if logger.handlers:
+        return logger
+
+    logger.setLevel(logging.INFO)
+
+    log_format = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    )
+
+    # Console
+    ch = logging.StreamHandler()
+    ch.setFormatter(log_format)
+    logger.addHandler(ch)
+
+    # File
+    log_file = os.path.join(os.getcwd(), "bot.log")
+    fh = logging.FileHandler(log_file, encoding="utf-8")
+    fh.setFormatter(log_format)
+    logger.addHandler(fh)
+
+    logger.propagate = False
+    return logger
+==================================
+# core/signal.py
+from dataclasses import dataclass
+
+
+@dataclass
+class Signal:
+    side: str   # "BUY" lub "SELL"
+    price: float
+========================
+# core/position.py
+from dataclasses import dataclass, asdict
+from typing import Dict, Any
+
+
+@dataclass
+class Position:
+    side: str   # "LONG" / "SHORT" (na razie używamy tylko LONG)
+    entry: float
+    sl: float
+    tp: float
+    ts: float   # trailing stop
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "Position":
+        return cls(
+            side=str(data["side"]),
+            entry=float(data["entry"]),
+            sl=float(data["sl"]),
+            tp=float(data["tp"]),
+            ts=float(data["ts"]),
+        )
+==========================
+# settings.py [4]
+
+import os
+from dotenv import load_dotenv
+
+# Wczytaj zmienne z pliku .env
+load_dotenv()
+
+# W trybie produkcyjnym bot ma być czysty, lekki, nie spamować logów.
+# W trybie debug chcesz widzieć wszystko: EMA, MACD, RSI, STOCH,
+# powody odrzucenia sygnału.
+DEBUG = True # włącza/wyłącza DEBUGI w kodzie
+
+# ─────────────────────────────────────────────
+# SYMBOL / INTERWAŁY
+# ─────────────────────────────────────────────
+
+SYMBOL = "XRPUSDC"
+
+INTERVAL_4H = "4h"
+CANDLES_4H = 300
+
+# ─────────────────────────────────────────────
+# EMA
+# ─────────────────────────────────────────────
+
+EMA_FAST = 50
+EMA_SLOW = 200
+
+# ─────────────────────────────────────────────
+# MACD
+# ─────────────────────────────────────────────
+
+MACD_FAST = 12
+MACD_SLOW = 26
+MACD_SIGNAL = 9
+
+# ─────────────────────────────────────────────
+# RSI
+# ─────────────────────────────────────────────
+
+RSI_PERIOD = 14
+RSI_OVERBOUGHT_4H = 70
+RSI_OVERSOLD_4H = 30
+
+# ─────────────────────────────────────────────
+# STOCH
+# ─────────────────────────────────────────────
+
+STO_K = 14
+STO_D = 3
+STO_SMOOTH = 3
+
+# ─────────────────────────────────────────────
+# RISK MANAGEMENT
+# ─────────────────────────────────────────────
+
+SL_PERCENT = 0.02
+TP_PERCENT = 0.04
+TRAILING_PERCENT = 0.01
+
+# ─────────────────────────────────────────────
+# GŁÓWNA PĘTLA
+# ─────────────────────────────────────────────
+
+CHECK_SLEEP_SECONDS = 10
+
+# ─────────────────────────────────────────────
+# TELEGRAM — pobierane z .env
+# ─────────────────────────────────────────────
+
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+
+==========================
+# alert.py
+import requests
+import time
+from utils.logger import get_logger
+from settings import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+
+logger = get_logger(__name__)
+
+TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+
+
+def send_message(text: str, retries: int = 3) -> None:
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        msg = "[ALERT] Brak konfiguracji Telegram — drukuję lokalnie:\n" + text
+        logger.warning(msg)
+        print(msg)
+        return
+
+    for attempt in range(retries):
+        try:
+            response = requests.get(
+                TELEGRAM_URL,
+                params={
+                    "chat_id": TELEGRAM_CHAT_ID,
+                    "text": text,
+                    "parse_mode": "HTML",
+                },
+                timeout=5,
+            )
+
+            if response.status_code == 429:
+                retry_after = response.json().get("retry_after", 5)
+                logger.warning(f"Telegram 429 — retry after {retry_after}s")
+                time.sleep(retry_after)
+                continue
+
+            if response.status_code != 200:
+                logger.warning(
+                    f"Telegram HTTP {response.status_code}: {response.text}"
+                )
+                time.sleep(1 + attempt * 2)
+                continue
+
+            return
+
+        except Exception as e:
+            logger.warning(
+                f"Telegram error: {e} (attempt {attempt+1}/{retries})"
+            )
+            time.sleep(1 + attempt * 2)
+
+    logger.error("Nie udało się wysłać alertu do Telegrama")
+    print("[ERROR] Nie udało się wysłać alertu do Telegrama:")
+    print(text)
+
+
+def send_buy_alert(price: float) -> None:
+    send_message(f"📈 <b>BUY 4H</b>\nCena: <b>{price}</b>")
+
+
+def send_sell_alert(price: float) -> None:
+    send_message(f"📉 <b>SELL 4H</b>\nCena: <b>{price}</b>")
+
+
+def send_sl_alert(price: float) -> None:
+    send_message(f"🛑 <b>STOP LOSS</b>\nCena: <b>{price}</b>")
+
+
+def send_tp_alert(price: float) -> None:
+    send_message(f"🎯 <b>TAKE PROFIT</b>\nCena: <b>{price}</b>")
+
+
+def send_trailing_update(new_ts: float) -> None:
+    send_message(
+        f"🔄 <b>Trailing stop update</b>\nNowy TS: <b>{new_ts}</b>"
+    )
+
+
+def send_trailing_hit(price: float) -> None:
+    send_message(
+        f"🛑 <b>TRAILING STOP</b>\nCena: <b>{price}</b>"
+    )
+=============================
+# indicators/ema.py
+import pandas as pd
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+def ema(series: pd.Series, period: int) -> pd.Series:
+    try:
+        if series is None or len(series) < period:
+            logger.warning(
+                f"EMA: za mało danych (len={len(series) if series is not None else 0})"
+            )
+            return pd.Series([float("nan")] * (len(series) if series is not None else 1))
+
+        if series.isna().any():
+            logger.warning("EMA: seria wejściowa zawiera NaN — wynik może być niepoprawny")
+
+        return series.ewm(span=period, adjust=False).mean()
+
+    except Exception as e:
+        logger.error(f"EMA error: {e}")
+        return pd.Series([float("nan")] * (len(series) if series is not None else 1))
+=======================
+# indicator/macd.py
+import pandas as pd
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+def macd(
+    series: pd.Series,
+    fast: int = 12,
+    slow: int = 26,
+    signal: int = 9
+) -> pd.DataFrame:
+    try:
+        if series is None or len(series) < slow + signal:
+            logger.warning(
+                f"MACD: za mało danych (len={len(series) if series is not None else 0})"
+            )
+            nan_series = pd.Series([float("nan")] * (len(series) if series is not None else 1))
+            return pd.DataFrame({
+                "macd": nan_series,
+                "signal": nan_series,
+                "hist": nan_series
+            })
+
+        ema_fast = series.ewm(span=fast, adjust=False).mean()
+        ema_slow = series.ewm(span=slow, adjust=False).mean()
+
+        macd_line = ema_fast - ema_slow
+        signal_line = macd_line.ewm(span=signal, adjust=False).mean()
+        hist = macd_line - signal_line
+
+        return pd.DataFrame({
+            "macd": macd_line,
+            "signal": signal_line,
+            "hist": hist
+        })
+
+    except Exception as e:
+        logger.error(f"MACD error: {e}")
+        nan_series = pd.Series([float("nan")] * (len(series) if series is not None else 1))
+        return pd.DataFrame({
+            "macd": nan_series,
+            "signal": nan_series,
+            "hist": nan_series
+        })
+==============================
+# indicators/rsi.py
+import pandas as pd
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+def rsi(series: pd.Series, period: int = 14) -> pd.Series:
+    try:
+        if series is None or len(series) < period + 1:
+            logger.warning(
+                f"RSI: za mało danych (len={len(series) if series is not None else 0})"
+            )
+            return pd.Series([float("nan")] * (len(series) if series is not None else 1))
+
+        delta = series.diff()
+
+        gain = delta.clip(lower=0)
+        loss = -delta.clip(upper=0)
+
+        avg_gain = gain.rolling(period).mean()
+        avg_loss = loss.rolling(period).mean()
+
+        rs = avg_gain / avg_loss.replace(0, float("nan"))
+        rsi_val = 100 - (100 / (1 + rs))
+
+        return rsi_val
+
+    except Exception as e:
+        logger.error(f"RSI error: {e}")
+        return pd.Series([float("nan")] * (len(series) if series is not None else 1))
+================
+# indicators/stoch.py
+import pandas as pd
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+def stochastic(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    k_period: int = 14,
+    d_period: int = 3
+) -> pd.DataFrame:
+    try:
+        if (
+            high is None or low is None or close is None
+            or len(high) < k_period
+            or len(low) < k_period
+            or len(close) < k_period
+        ):
+            logger.warning(
+                f"STOCH: za mało danych (len={len(close) if close is not None else 0})"
+            )
+            nan_series = pd.Series([float("nan")] * (len(close) if close is not None else 1))
+            return pd.DataFrame({
+                "k": nan_series,
+                "d": nan_series
+            })
+
+        lowest_low = low.rolling(k_period).min()
+        highest_high = high.rolling(k_period).max()
+
+        k = 100 * (close - lowest_low) / (highest_high - lowest_low).replace(0, float("nan"))
+        d = k.rolling(d_period).mean()
+
+        return pd.DataFrame({
+            "k": k,
+            "d": d
+        })
+
+    except Exception as e:
+        logger.error(f"STOCH error: {e}")
+        nan_series = pd.Series([float("nan")] * (len(close) if close is not None else 1))
+        return pd.DataFrame({
+            "k": nan_series,
+            "d": nan_series
+        })
+======================
+# strategy/timeframe_1h.py
+
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+def analyze_1h() -> dict | None:
+    """
+    Stub filtra 1H.
+    Zwraca dict z kluczami używanymi w strategy_4h.
+    W v1 może być prosto, w v2 rozbudujemy.
+    """
+    try:
+        return {
+            "trend": "UP",
+            "momentum": "UP",
+            "rsi_trend": "UP",
+        }
+    except Exception as e:
+        logger.error(f"1H analyze error: {e}")
+        return None
+====================
+# strategy/timeframe_1d.py
+
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+def analyze_1d() -> dict | None:
+    """
+    Stub filtra 1D.
+    Zwraca dict z kluczami używanymi w strategy_4h.
+    """
+    try:
+        return {
+            "trend": "UP",
+            "big_trend": "UP",
+        }
+    except Exception as e:
+        logger.error(f"1D analyze error: {e}")
+        return None
+=========================
+# strategy/strategy_4h.py  [12]
+
+import numpy as np
+from utils.logger import get_logger
+from api import get_klines
+from indicators.ema import ema
+from indicators.macd import macd
+from indicators.rsi import rsi
+from indicators.stoch import stochastic
+from settings import DEBUG
+
+from settings import (
+    SYMBOL,
+    INTERVAL_4H,
+    CANDLES_4H,
+    EMA_FAST,
+    EMA_SLOW,
+    MACD_FAST,
+    MACD_SLOW,
+    MACD_SIGNAL,
+    RSI_PERIOD,
+    RSI_OVERBOUGHT_4H,
+    RSI_OVERSOLD_4H,
+    STO_K,
+    STO_D,
+)
+
+from strategy.timeframe_1h import analyze_1h
+from strategy.timeframe_1d import analyze_1d
+from core.signal import Signal
+
+logger = get_logger(__name__)
+
+
+def check_signal() -> Signal | None:
+    # 1) Świece
+    try:
+        df = get_klines(SYMBOL, INTERVAL_4H, CANDLES_4H)
+    except Exception as e:
+        logger.error(f"4H get_klines error: {e}")
+        return None
+
+    if df is None or len(df) < 50:
+        logger.warning("4H: Za mało świec do analizy")
+        return None
+
+    # 2) Indykatory
+    try:
+        df["ema_fast"] = ema(df["close"], EMA_FAST)
+        df["ema_slow"] = ema(df["close"], EMA_SLOW)
+
+        macd_df = macd(df["close"], MACD_FAST, MACD_SLOW, MACD_SIGNAL)
+        df["macd"] = macd_df["macd"]
+        df["macd_signal"] = macd_df["signal"]
+        df["macd_hist"] = macd_df["hist"]
+
+        df["rsi"] = rsi(df["close"], RSI_PERIOD)
+
+        stoch_df = stochastic(
+            df["high"],
+            df["low"],
+            df["close"],
+            STO_K,
+            STO_D,
+        )
+        df["stoch_k"] = stoch_df["k"]
+        df["stoch_d"] = stoch_df["d"]
+
+    except Exception as e:
+        logger.error(f"4H indicator error: {e}")
+        return None
+
+    last = df.iloc[-1]
+    prev = df.iloc[-2]
+    price = float(last["close"])
+
+    indicators = [
+        last["ema_fast"], last["ema_slow"],
+        last["macd"], last["macd_signal"],
+        last["rsi"], last["stoch_k"], last["stoch_d"]
+    ]
+
+    if any(np.isnan(indicators)):
+        logger.warning("4H: NaN w indykatorach — brak sygnału")
+        return None
+
+    # 4) Filtry 1H / 1D
+    try:
+        h1 = analyze_1h()
+        d1 = analyze_1d()
+    except Exception as e:
+        logger.warning(f"TF error (1H/1D): {e}")
+        return None
+
+    if not h1 or not d1:
+        logger.info("Brak sygnału — filtry 1H/1D nie gotowe")
+        return None
+
+    # Test wł/wył DEBUG w settings.py
+    if DEBUG:
+        logger.info(
+            f"DEBUG 4H: price={price}, "
+            f"ema_fast={last['ema_fast']}, ema_slow={last['ema_slow']}, "
+            f"macd={last['macd']}, macd_signal={last['macd_signal']}, "
+            f"rsi={last['rsi']}, "
+            f"stoch_k={last['stoch_k']}, stoch_d={last['stoch_d']}"
+        )
+
+    # k.Test
+
+    # 5) BUY
+    ema_distance = last["ema_fast"] - last["ema_slow"]
+    ema_ok = ema_distance > (last["close"] * 0.001)
+
+    stoch_cross = (
+        prev["stoch_k"] < prev["stoch_d"] and
+        last["stoch_k"] > last["stoch_d"] and
+        abs(last["stoch_k"] - last["stoch_d"]) > 0.5
+    )
+
+    buy_core = (
+        ema_ok and
+        last["macd"] > last["macd_signal"] and
+        last["rsi"] < RSI_OVERBOUGHT_4H and
+        stoch_cross
+    )
+
+    buy_filters = (
+        d1["trend"] == "UP" and
+        d1["big_trend"] == "UP" and
+        h1["trend"] == "UP" and
+        h1["momentum"] == "UP" and
+        h1["rsi_trend"] == "UP"
+    )
+
+    if buy_core and buy_filters:
+        logger.info(f"BUY sygnał 4H @ {price}")
+        return Signal(side="BUY", price=price)
+
+    # 6) SELL (na przyszłość, na razie bot gra tylko LONG)
+    # Możesz zostawić jako placeholder:
+    # ...
+
+    logger.info("4H: brak sygnału")
+    return None
+
+====================
+# api.py  [13]
+
+import time
+import pandas as pd
+import requests
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+BINANCE_URL = "https://api.binance.com/api/v3/klines"
+
+
+def get_klines(symbol: str, interval: str, limit: int) -> pd.DataFrame:
+    """
+    Pobiera świece z Binance Spot.
+    Zwraca DataFrame z kolumnami:
+    open, high, low, close, volume, open_time, close_time
+    """
+
+    params = {
+        "symbol": symbol,
+        "interval": interval,
+        "limit": limit,
+    }
+
+    for attempt in range(5):
+        try:
+            r = requests.get(BINANCE_URL, params=params, timeout=5)
+
+            if r.status_code == 429:
+                logger.warning("Binance 429 — rate limit, retry…")
+                time.sleep(2 + attempt)
+                continue
+
+            if r.status_code != 200:
+                logger.error(f"Binance HTTP {r.status_code}: {r.text}")
+                time.sleep(1 + attempt)
+                continue
+
+            data = r.json()
+
+            if not isinstance(data, list) or len(data) == 0:
+                logger.error("Binance zwrócił pustą listę świec")
+                return None
+
+            df = pd.DataFrame(data, columns=[
+                "open_time", "open", "high", "low", "close", "volume",
+                "close_time", "quote_asset_volume", "number_of_trades",
+                "taker_buy_base", "taker_buy_quote", "ignore"
+            ])
+
+            # konwersje
+            df["open"] = df["open"].astype(float)
+            df["high"] = df["high"].astype(float)
+            df["low"] = df["low"].astype(float)
+            df["close"] = df["close"].astype(float)
+            df["volume"] = df["volume"].astype(float)
+
+            return df[["open_time", "open", "high", "low", "close", "volume", "close_time"]]
+
+        except Exception as e:
+            logger.error(f"get_klines error: {e}")
+            time.sleep(1 + attempt)
+
+    logger.error("get_klines: wszystkie próby nieudane")
+    return None
+
+===================
+# bot.py
+import time
+import json
+import os
+from typing import Optional, Dict, Any, TypedDict
+
+from utils.logger import get_logger
+from settings import (
+    CHECK_SLEEP_SECONDS,
+    SL_PERCENT,
+    TP_PERCENT,
+    TRAILING_PERCENT,
+)
+from strategy.strategy_4h import check_signal
+from core.signal import Signal
+from core.position import Position
+from alert import (
+    send_buy_alert,
+    send_sell_alert,
+    send_sl_alert,
+    send_tp_alert,
+    send_trailing_update,
+    send_trailing_hit,
+)
+
+logger = get_logger(__name__)
+
+
+class StateDict(TypedDict):
+    position: Optional[Dict[str, Any]]
+
+
+STATE_FILE = "state.json"
+
+
+def load_state() -> StateDict:
+    if not os.path.exists(STATE_FILE):
+        logger.info("Brak state.json — tworzę nowy stan.")
+        return {"position": None}
+
+    try:
+        with open(STATE_FILE, "r") as f:
+            data: Dict[str, Any] = json.load(f)
+
+        pos_data = data.get("position")
+        if pos_data is not None:
+            pos = Position.from_dict(pos_data)
+            return {"position": pos.to_dict()}
+
+        return {"position": None}
+
+    except Exception as e:
+        logger.error(f"Błąd wczytywania state.json: {e}")
+        return {"position": None}
+
+
+def save_state(state: StateDict) -> None:
+    try:
+        with open(STATE_FILE, "w") as f:
+            json.dump(state, f, indent=4)
+        logger.info("Zapisano state.json")
+    except Exception as e:
+        logger.error(f"Błąd zapisu state.json: {e}")
+
+
+def main() -> None:
+    logger.info("Bot startuje…")
+    state: StateDict = load_state()
+
+    while True:
+        try:
+            signal = check_signal()
+
+            if not isinstance(signal, Signal):
+                logger.info("Brak sygnału — czekam…")
+                time.sleep(CHECK_SLEEP_SECONDS)
+                continue
+
+            price: float = signal.price
+
+            # BUY — wejście
+            if signal.side == "BUY" and state["position"] is None:
+                entry = price
+                sl = entry * (1 - SL_PERCENT)
+                tp = entry * (1 + TP_PERCENT)
+                ts = entry * (1 - TRAILING_PERCENT)
+
+                pos = Position(
+                    side="LONG",
+                    entry=entry,
+                    sl=sl,
+                    tp=tp,
+                    ts=ts,
+                )
+
+                state["position"] = pos.to_dict()
+                save_state(state)
+                send_buy_alert(entry)
+                logger.info(f"BUY @ {entry}, SL={sl}, TP={tp}, TS={ts}")
+
+            # Obsługa otwartej pozycji
+            pos_dict = state["position"]
+            if pos_dict is not None:
+                pos = Position.from_dict(pos_dict)
+
+                new_ts = price * (1 - TRAILING_PERCENT)
+                if new_ts > pos.ts:
+                    pos.ts = new_ts
+                    state["position"] = pos.to_dict()
+                    save_state(state)
+                    send_trailing_update(new_ts)
+                    logger.info(f"Trailing stop update: {new_ts}")
+
+                if price <= pos.sl:
+                    send_sl_alert(price)
+                    logger.info(f"SL hit @ {price}")
+                    state["position"] = None
+                    save_state(state)
+
+                elif price >= pos.tp:
+                    send_tp_alert(price)
+                    logger.info(f"TP hit @ {price}")
+                    state["position"] = None
+                    save_state(state)
+
+                elif price <= pos.ts:
+                    send_trailing_hit(price)
+                    logger.info(f"TS hit @ {price}")
+                    state["position"] = None
+                    save_state(state)
+
+            time.sleep(CHECK_SLEEP_SECONDS)
+
+        except KeyboardInterrupt:
+            logger.info("Przerwano ręcznie (CTRL+C). Kończę pracę bota.")
+            break
+        except Exception as e:
+            logger.error(f"Błąd głównej pętli: {e}")
+            time.sleep(5)
+
+
+if __name__ == "__main__":
+    main()
+===========================
