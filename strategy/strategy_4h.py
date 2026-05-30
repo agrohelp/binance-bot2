@@ -14,7 +14,6 @@ from core.indicator_sanity import sanity_check_indicators
 from core.force import load_force, clear_force
 from core.trend_logger import log_trend
 from core.watchdog import watchdog_candle_freeze
-from logs.trade_logger import get_trade_logger
 
 from settings import DEBUG
 
@@ -40,7 +39,6 @@ from strategy.timeframe_1d import analyze_1d
 from core.signal import Signal
 
 logger = get_logger(__name__)
-trade_logger = get_trade_logger()
 
 
 # ─────────────────────────────────────────────
@@ -62,15 +60,12 @@ def compute_atr(df: pd.DataFrame, period: int = 14) -> float | None:
 
     true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
 
-    # ATR EMA — szybsza, bardziej tradingowa wersja
     atr = true_range.ewm(span=period, adjust=False).mean()
     atr_value = float(atr.iloc[-1])
 
-    # sanity: brak absurdalnych spike’ów
     if atr_value > close.iloc[-1] * 0.2:
         return None
 
-    # minimalny ATR (żeby TS nie był za ciasny)
     min_atr = close.iloc[-1] * 0.0001
     if atr_value < min_atr:
         atr_value = min_atr
@@ -130,23 +125,19 @@ def get_atr_4h(period: int = 14) -> float | None:
 # ─────────────────────────────────────────────
 def check_signal(df_override=None) -> Signal | None:
 
-    # 0) FORCE BUY / SELL
     if df_override is None:
         force = load_force()
 
         if force.get("buy"):
             logger.warning("FORCE BUY aktywne — generuję BUY bez filtrów!")
-            trade_logger.info("FORCE BUY")
             clear_force()
             return Signal(side="BUY", price=None)
 
         if force.get("sell"):
             logger.warning("FORCE SELL aktywne — generuję SELL bez filtrów!")
-            trade_logger.info("FORCE SELL")
             clear_force()
             return Signal(side="SELL", price=None)
 
-    # 1) ŚWIECE
     if df_override is not None:
         df = df_override.copy()
     else:
@@ -160,7 +151,6 @@ def check_signal(df_override=None) -> Signal | None:
     if not watchdog_candle_freeze(df, logger, "4H"):
         return None
 
-    # 2) INDIKATORY
     try:
         df["ema_fast"] = ema(df["close"], EMA_FAST)
         df["ema_slow"] = ema(df["close"], EMA_SLOW)
@@ -198,7 +188,6 @@ def check_signal(df_override=None) -> Signal | None:
     if not sanity_check_indicators(last, logger, "4H"):
         return None
 
-    # 3) FILTRY 1H / 1D
     try:
         h1 = analyze_1h()
         d1 = analyze_1d()
@@ -213,17 +202,6 @@ def check_signal(df_override=None) -> Signal | None:
         log_trend(logger, "1H", h1)
         log_trend(logger, "1D", d1)
 
-    if DEBUG:
-        logger.info(
-            f"DEBUG 4H: price={price}, "
-            f"ema_fast={last['ema_fast']}, ema_slow={last['ema_slow']}, "
-            f"macd={last['macd']}, macd_signal={last['macd_signal']}, "
-            f"rsi={last['rsi']}, "
-            f"stoch_k={last['stoch_k']}, stoch_d={last['stoch_d']}, "
-            f"atr={last.get('atr', None)}"
-        )
-
-    # 4) BUY — poluzowane wejścia
     ema_distance = last["ema_fast"] - last["ema_slow"]
     ema_ok = ema_distance > (last["close"] * 0.0003)
 
@@ -245,17 +223,10 @@ def check_signal(df_override=None) -> Signal | None:
         "RSI trend 1H": h1["rsi_trend"] == "UP",
     }
 
-    if DEBUG:
-        logger.info("BUY — szczegółowa diagnostyka filtrów:")
-        for name, result in buy_checks.items():
-            logger.info(f" - {name}: {'OK' if result else 'FAIL'}")
-
     if all(buy_checks.values()):
         logger.info(f"BUY sygnał 4H @ {price}")
-        trade_logger.info(f"BUY @ {price}")
         return Signal(side="BUY", price=price)
 
-    # 5) SELL — bez zmian (może zostać bardziej rygorystyczny)
     sell_checks = {
         "EMA trend (ema_fast < ema_slow)": last["ema_fast"] < last["ema_slow"],
         "MACD (macd < macd_signal)": last["macd"] < last["macd_signal"],
@@ -263,14 +234,8 @@ def check_signal(df_override=None) -> Signal | None:
         "STOCH cross (K < D)": last["stoch_k"] < last["stoch_d"],
     }
 
-    if DEBUG:
-        logger.info("SELL — szczegółowa diagnostyka filtrów:")
-        for name, result in sell_checks.items():
-            logger.info(f" - {name}: {'OK' if result else 'FAIL'}")
-
     if all(sell_checks.values()):
         logger.info(f"SELL sygnał 4H @ {price}")
-        trade_logger.info(f"SELL @ {price}")
         return Signal(side="SELL", price=price)
 
     logger.info("4H: brak sygnału")
@@ -278,8 +243,9 @@ def check_signal(df_override=None) -> Signal | None:
 
 
 # ─────────────────────────────────────────────
-#  DODATKOWE FUNKCJE DLA TELEGRAM / STATUS
+#  FUNKCJE DLA STATUS REPORT
 # ─────────────────────────────────────────────
+
 def get_trend_1h():
     h1 = analyze_1h()
     return {
@@ -444,7 +410,6 @@ def get_debug_report():
 
 
 def get_state_snapshot():
-    """Snapshot do wykrywania zmian dla status_report."""
     trend_1h = get_trend_1h()
     trend_1d = get_trend_1d()
     buy_diag = get_buy_diagnostics()
