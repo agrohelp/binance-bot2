@@ -1,120 +1,158 @@
-# alert.py — v2.3.3 (SPOT/FUTURES explicit alerts)
+# alert.py — v2.4 (multi-user + anti-spam + SPOT/FUTURES)
 
 import requests
 import time
 from utils.logger import get_logger
-from settings import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SPOT_MODE
+from settings import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_IDS, SPOT_MODE
 
 logger = get_logger(__name__)
 
-TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+BASE_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
+
+# pamiętamy ostatnie message_id dla każdego użytkownika
+_last_message_ids = {}
 
 
-def send_message(text: str, retries: int = 3) -> None:
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        msg = "[ALERT] Brak konfiguracji Telegram — drukuję lokalnie:\n" + text
-        logger.warning(msg)
-        print(msg)
+def _delete_previous(chat_id: str):
+    """Usuwa poprzedni alert statusowy, jeśli istnieje."""
+    if chat_id not in _last_message_ids:
         return
+
+    msg_id = _last_message_ids[chat_id]
+
+    try:
+        url = f"{BASE_URL}/deleteMessage"
+        requests.get(url, params={"chat_id": chat_id, "message_id": msg_id}, timeout=5)
+        logger.info(f"Usunięto poprzedni alert (chat={chat_id}, msg={msg_id})")
+    except Exception as e:
+        logger.warning(f"Nie udało się usunąć poprzedniego alertu: {e}")
+
+
+def _send(chat_id: str, text: str, retries: int = 3):
+    """Wysyła wiadomość i zapisuje jej message_id."""
+    if not TELEGRAM_BOT_TOKEN:
+        logger.error("Brak TELEGRAM_BOT_TOKEN")
+        return
+
+    # usuń poprzedni alert
+    _delete_previous(chat_id)
 
     for attempt in range(retries):
         try:
+            url = f"{BASE_URL}/sendMessage"
             response = requests.get(
-                TELEGRAM_URL,
+                url,
                 params={
-                    "chat_id": TELEGRAM_CHAT_ID,
+                    "chat_id": chat_id,
                     "text": text,
                     "parse_mode": "HTML",
                 },
                 timeout=5,
-            )
+            ).json()
 
-            if response.status_code == 429:
-                retry_after = response.json().get("retry_after", 5)
-                logger.warning(f"Telegram 429 — retry after {retry_after}s")
-                time.sleep(retry_after)
-                continue
-
-            if response.status_code != 200:
-                logger.warning(
-                    f"Telegram HTTP {response.status_code}: {response.text}"
-                )
-                time.sleep(1 + attempt * 2)
-                continue
+            # zapisz ID nowej wiadomości
+            if "result" in response and "message_id" in response["result"]:
+                _last_message_ids[chat_id] = response["result"]["message_id"]
 
             return
 
         except Exception as e:
-            logger.warning(
-                f"Telegram error: {e} (attempt {attempt+1}/{retries})"
-            )
+            logger.warning(f"Telegram error: {e} (attempt {attempt+1}/{retries})")
             time.sleep(1 + attempt * 2)
 
-    logger.error("Nie udało się wysłać alertu do Telegrama")
-    print("[ERROR] Nie udało się wysłać alertu do Telegrama:")
-    print(text)
+    logger.error("Nie udało się wysłać alertu Telegram")
+
+
+def _broadcast(text: str):
+    """Wysyła alert do wszystkich użytkowników."""
+    for chat_id in TELEGRAM_CHAT_IDS:
+        _send(chat_id, text)
 
 
 # ─────────────────────────────────────────────
-# ALERTY HANDLOWE — SPOT/FUTURES explicit
+# ALERTY HANDLOWE — SPOT/FUTURES
 # ─────────────────────────────────────────────
 
-def send_buy_alert(price: float) -> None:
+def send_buy_alert(price: float):
     if SPOT_MODE:
-        text = (
-            "📈 <b>WEJŚCIE LONG (SPOT)</b>\n"
-            f"Cena: <b>{price}</b>"
-        )
+        text = f"📈 <b>WEJŚCIE LONG (SPOT)</b>\nCena: <b>{price}</b>"
     else:
-        text = (
-            "📈 <b>BUY (LONG)</b>\n"
-            f"Cena: <b>{price}</b>"
-        )
-    send_message(text)
+        text = f"📈 <b>BUY (LONG)</b>\nCena: <b>{price}</b>"
+    _broadcast(text)
 
 
-def send_sell_alert(price: float) -> None:
+def send_sell_alert(price: float):
     if SPOT_MODE:
-        text = (
-            "📉 <b>WYJŚCIE Z LONG (SPOT)</b>\n"
-            f"Cena: <b>{price}</b>"
-        )
+        text = f"📉 <b>WYJŚCIE Z LONG (SPOT)</b>\nCena: <b>{price}</b>"
     else:
-        text = (
-            "📉 <b>SELL (SHORT)</b>\n"
-            f"Cena: <b>{price}</b>"
-        )
-    send_message(text)
+        text = f"📉 <b>SELL (SHORT)</b>\nCena: <b>{price}</b>"
+    _broadcast(text)
 
 
-def send_sl_alert(price: float) -> None:
+def send_sl_alert(price: float):
     prefix = "(SPOT)" if SPOT_MODE else "(FUTURES)"
-    send_message(f"🛑 <b>STOP LOSS {prefix}</b>\nCena: <b>{price}</b>")
+    _broadcast(f"🛑 <b>STOP LOSS {prefix}</b>\nCena: <b>{price}</b>")
 
 
-def send_tp_alert(price: float) -> None:
+def send_tp_alert(price: float):
     prefix = "(SPOT)" if SPOT_MODE else "(FUTURES)"
-    send_message(f"🎯 <b>TAKE PROFIT {prefix}</b>\nCena: <b>{price}</b>")
+    _broadcast(f"🎯 <b>TAKE PROFIT {prefix}</b>\nCena: <b>{price}</b>")
 
 
-def send_trailing_update(new_ts: float) -> None:
+def send_trailing_update(new_ts: float):
     prefix = "(SPOT)" if SPOT_MODE else "(FUTURES)"
-    send_message(
-        f"🔄 <b>Trailing stop update {prefix}</b>\nNowy TS: <b>{new_ts}</b>"
-    )
+    _broadcast(f"🔄 <b>Trailing stop update {prefix}</b>\nNowy TS: <b>{new_ts}</b>")
 
 
-def send_trailing_hit(price: float) -> None:
+def send_trailing_hit(price: float):
     prefix = "(SPOT)" if SPOT_MODE else "(FUTURES)"
-    send_message(
-        f"🛑 <b>TRAILING STOP {prefix}</b>\nCena: <b>{price}</b>"
-    )
+    _broadcast(f"🛑 <b>TRAILING STOP {prefix}</b>\nCena: <b>{price}</b>")
 
 
 # ─────────────────────────────────────────────
-# ALERT STATUSOWY
+# ALERT STATUSOWY — osobny anti-spam
 # ─────────────────────────────────────────────
 
-def send_status_alert(msg: str) -> None:
+_last_status_message_ids = {}  # osobne ID tylko dla statusów
+
+def send_status_alert(msg: str):
     mode = "SPOT" if SPOT_MODE else "FUTURES"
-    send_message(f"⏱️ <b>Alert statusowy ({mode})</b>\n\n{msg}")
+    text = f"⏱️ <b>Alert statusowy ({mode})</b>\n\n{msg}"
+
+    for chat_id in TELEGRAM_CHAT_IDS:
+
+        # 1) Usuń poprzedni status tego użytkownika
+        if chat_id in _last_status_message_ids:
+            try:
+                url = f"{BASE_URL}/deleteMessage"
+                requests.get(
+                    url,
+                    params={
+                        "chat_id": chat_id,
+                        "message_id": _last_status_message_ids[chat_id],
+                    },
+                    timeout=5,
+                )
+                logger.info(f"Usunięto poprzedni STATUS (chat={chat_id})")
+            except Exception as e:
+                logger.warning(f"Nie udało się usunąć statusu: {e}")
+
+        # 2) Wyślij nowy status
+        try:
+            url = f"{BASE_URL}/sendMessage"
+            response = requests.get(
+                url,
+                params={
+                    "chat_id": chat_id,
+                    "text": text,
+                    "parse_mode": "HTML",
+                },
+                timeout=5,
+            ).json()
+
+            # zapisz ID nowego statusu
+            if "result" in response and "message_id" in response["result"]:
+                _last_status_message_ids[chat_id] = response["result"]["message_id"]
+
+        except Exception as e:
+            logger.error(f"Błąd wysyłania statusu: {e}")

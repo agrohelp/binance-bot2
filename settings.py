@@ -74,12 +74,15 @@ CHECK_SLEEP_SECONDS = 10
 # ─────────────────────────────────────────────
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+
+# Multi-user: lista ID z .env
+raw_ids = os.getenv("TELEGRAM_CHAT_IDS", "")
+TELEGRAM_CHAT_IDS = [x.strip() for x in raw_ids.split(",") if x.strip()]
 
 # przyszłe wsparcie dla wielu odbiorców (v2.3.4)
 # TELEGRAM_CHAT_IDS = os.getenv("TELEGRAM_CHAT_IDS", "")
 
-if TELEGRAM_BOT_TOKEN is None or TELEGRAM_CHAT_ID is None:
+if TELEGRAM_BOT_TOKEN is None or TELEGRAM_CHAT_IDS is None:
     raise ValueError("Brakuje TELEGRAM_BOT_TOKEN lub TELEGRAM_CHAT_ID w pliku .env")
 
 # ─────────────────────────────────────────────
