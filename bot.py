@@ -1,10 +1,9 @@
-# bot.py — v2.3.2 (ATR PRO Engine, Dynamic TS, Binance Live, Telegram Alerts, Status Alerts)
+# bot.py — v2.3.3 (SPOT MODE, ATR PRO, last_closed history)
 
 import time
 import json
 import os
 from typing import Optional, Dict, Any, TypedDict
-import threading
 
 from utils.logger import get_logger
 from settings import (
@@ -14,6 +13,7 @@ from settings import (
     TRAILING_PERCENT,
     STATUS_ALERT_ENABLED,
     STATUS_ALERT_INTERVAL,
+    SPOT_MODE,
 )
 from strategy.strategy_4h import check_signal, get_atr_4h
 from core.signal import Signal
@@ -27,7 +27,6 @@ from alert import (
     send_trailing_hit,
     send_status_alert,
 )
-
 from status_short import get_short_status
 
 logger = get_logger(__name__)
@@ -38,6 +37,7 @@ ATR_MULTIPLIER = 2.5
 
 class StateDict(TypedDict):
     position: Optional[Dict[str, Any]]
+    last_closed: Optional[Dict[str, Any]]
 
 
 STATE_FILE = "state.json"
@@ -46,22 +46,29 @@ STATE_FILE = "state.json"
 def load_state() -> StateDict:
     if not os.path.exists(STATE_FILE):
         logger.info("Brak state.json — tworzę nowy stan.")
-        return {"position": None}
+        return {"position": None, "last_closed": None}
 
     try:
         with open(STATE_FILE, "r") as f:
             data: Dict[str, Any] = json.load(f)
 
         pos_data = data.get("position")
+        last_closed = data.get("last_closed")
+
         if pos_data is not None:
             pos = Position.from_dict(pos_data)
-            return {"position": pos.to_dict()}
+            pos_dict = pos.to_dict()
+        else:
+            pos_dict = None
 
-        return {"position": None}
+        return {
+            "position": pos_dict,
+            "last_closed": last_closed,
+        }
 
     except Exception as e:
         logger.error(f"Błąd wczytywania state.json: {e}")
-        return {"position": None}
+        return {"position": None, "last_closed": None}
 
 
 def save_state(state: StateDict) -> None:
@@ -127,12 +134,9 @@ def compute_trailing_stop(
 # GŁÓWNA PĘTLA BOTA
 # ─────────────────────────────────────────────
 def main() -> None:
-    logger.info("Bot startuje…")
+    logger.info(f"Bot startuje… (SPOT_MODE={SPOT_MODE})")
     state: StateDict = load_state()
 
-    # status / alerty zmian w tle
-
-    # timer dla cyklicznego alertu statusowego
     last_status_alert = 0.0
 
     while True:
@@ -142,7 +146,6 @@ def main() -> None:
             if not isinstance(signal, Signal):
                 logger.info("Brak sygnału — czekam…")
 
-                # cykliczny alert statusowy
                 if STATUS_ALERT_ENABLED:
                     now = time.time()
                     if now - last_status_alert >= STATUS_ALERT_INTERVAL * 60:
@@ -159,20 +162,19 @@ def main() -> None:
 
             price: float = signal.price if signal.price is not None else 0.0
 
-            # BUY — wejście
+            # BUY — wejście LONG (SPOT/FUTURES)
             if signal.side == "BUY" and state["position"] is None:
                 entry = price
                 sl = entry * (1 - SL_PERCENT)
                 tp = entry * (1 + TP_PERCENT)
 
-                # ATR PRO — pobranie ATR
                 atr = get_atr_4h()
                 ts = compute_trailing_stop(
                     price=entry,
                     atr=atr,
                     entry=entry,
                     sl=sl,
-                    current_ts=sl,  # start TS = SL
+                    current_ts=sl,
                 )
 
                 pos = Position(
@@ -184,9 +186,9 @@ def main() -> None:
                 )
 
                 state["position"] = pos.to_dict()
+                # nie kasujemy last_closed przy nowej pozycji — historia zostaje
                 save_state(state)
 
-                # ALERT: moment wejścia
                 send_buy_alert(entry)
                 logger.info(
                     f"BUY @ {entry}, SL={sl}, TP={tp}, TS={ts} (ATR PRO)"
@@ -197,7 +199,6 @@ def main() -> None:
             if pos_dict is not None:
                 pos = Position.from_dict(pos_dict)
 
-                # ATR PRO — aktualizacja trailing stopu
                 atr = get_atr_4h()
                 new_ts = compute_trailing_stop(
                     price=price,
@@ -219,6 +220,16 @@ def main() -> None:
                     send_sl_alert(price)
                     send_sell_alert(price)
                     logger.info(f"SL hit @ {price}")
+
+                    state["last_closed"] = {
+                        "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "reason": "STOP LOSS",
+                        "exit_price": price,
+                        "entry": pos.entry,
+                        "sl": pos.sl,
+                        "tp": pos.tp,
+                        "ts": pos.ts,
+                    }
                     state["position"] = None
                     save_state(state)
 
@@ -227,6 +238,16 @@ def main() -> None:
                     send_tp_alert(price)
                     send_sell_alert(price)
                     logger.info(f"TP hit @ {price}")
+
+                    state["last_closed"] = {
+                        "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "reason": "TAKE PROFIT",
+                        "exit_price": price,
+                        "entry": pos.entry,
+                        "sl": pos.sl,
+                        "tp": pos.tp,
+                        "ts": pos.ts,
+                    }
                     state["position"] = None
                     save_state(state)
 
@@ -235,10 +256,19 @@ def main() -> None:
                     send_trailing_hit(price)
                     send_sell_alert(price)
                     logger.info(f"TS hit @ {price}")
+
+                    state["last_closed"] = {
+                        "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "reason": "TRAILING STOP",
+                        "exit_price": price,
+                        "entry": pos.entry,
+                        "sl": pos.sl,
+                        "tp": pos.tp,
+                        "ts": pos.ts,
+                    }
                     state["position"] = None
                     save_state(state)
 
-            # cykliczny alert statusowy również gdy jest pozycja
             if STATUS_ALERT_ENABLED:
                 now = time.time()
                 if now - last_status_alert >= STATUS_ALERT_INTERVAL * 60:

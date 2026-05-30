@@ -1,9 +1,9 @@
-# alert.py — v2.3.2 (Telegram Alerts + Status Alert)
+# alert.py — v2.3.3 (SPOT/FUTURES explicit alerts)
 
 import requests
 import time
 from utils.logger import get_logger
-from settings import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+from settings import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SPOT_MODE
 
 logger = get_logger(__name__)
 
@@ -56,43 +56,65 @@ def send_message(text: str, retries: int = 3) -> None:
 
 
 # ─────────────────────────────────────────────
-# ALERTY HANDLOWE
+# ALERTY HANDLOWE — SPOT/FUTURES explicit
 # ─────────────────────────────────────────────
 
 def send_buy_alert(price: float) -> None:
-    send_message(f"📈 <b>BUY 4H</b>\nCena: <b>{price}</b>")
+    if SPOT_MODE:
+        text = (
+            "📈 <b>WEJŚCIE LONG (SPOT)</b>\n"
+            f"Cena: <b>{price}</b>"
+        )
+    else:
+        text = (
+            "📈 <b>BUY (LONG)</b>\n"
+            f"Cena: <b>{price}</b>"
+        )
+    send_message(text)
 
 
 def send_sell_alert(price: float) -> None:
-    send_message(f"📉 <b>SELL 4H</b>\nCena: <b>{price}</b>")
+    if SPOT_MODE:
+        text = (
+            "📉 <b>WYJŚCIE Z LONG (SPOT)</b>\n"
+            f"Cena: <b>{price}</b>"
+        )
+    else:
+        text = (
+            "📉 <b>SELL (SHORT)</b>\n"
+            f"Cena: <b>{price}</b>"
+        )
+    send_message(text)
 
 
 def send_sl_alert(price: float) -> None:
-    send_message(f"🛑 <b>STOP LOSS</b>\nCena: <b>{price}</b>")
+    prefix = "(SPOT)" if SPOT_MODE else "(FUTURES)"
+    send_message(f"🛑 <b>STOP LOSS {prefix}</b>\nCena: <b>{price}</b>")
 
 
 def send_tp_alert(price: float) -> None:
-    send_message(f"🎯 <b>TAKE PROFIT</b>\nCena: <b>{price}</b>")
+    prefix = "(SPOT)" if SPOT_MODE else "(FUTURES)"
+    send_message(f"🎯 <b>TAKE PROFIT {prefix}</b>\nCena: <b>{price}</b>")
 
 
 def send_trailing_update(new_ts: float) -> None:
+    prefix = "(SPOT)" if SPOT_MODE else "(FUTURES)"
     send_message(
-        f"🔄 <b>Trailing stop update</b>\nNowy TS: <b>{new_ts}</b>"
+        f"🔄 <b>Trailing stop update {prefix}</b>\nNowy TS: <b>{new_ts}</b>"
     )
 
 
 def send_trailing_hit(price: float) -> None:
+    prefix = "(SPOT)" if SPOT_MODE else "(FUTURES)"
     send_message(
-        f"🛑 <b>TRAILING STOP</b>\nCena: <b>{price}</b>"
+        f"🛑 <b>TRAILING STOP {prefix}</b>\nCena: <b>{price}</b>"
     )
 
 
 # ─────────────────────────────────────────────
-# ALERT STATUSOWY (CO X MINUT)
+# ALERT STATUSOWY
 # ─────────────────────────────────────────────
 
 def send_status_alert(msg: str) -> None:
-    """
-    Wysyła cykliczny alert statusowy (1H/4H/1D)
-    """
-    send_message(f"⏱ <b>Alert statusowy</b>\n\n{msg}")
+    mode = "SPOT" if SPOT_MODE else "FUTURES"
+    send_message(f"⏱️ <b>Alert statusowy ({mode})</b>\n\n{msg}")

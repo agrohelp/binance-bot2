@@ -1,21 +1,25 @@
-# settings.py
 import os
 from dotenv import load_dotenv
 
 # Wczytaj zmienne z pliku .env
 load_dotenv()
 
-# W trybie produkcyjnym bot ma być czysty, lekki, nie spamować logów.
-# W trybie debug chcesz widzieć wszystko: EMA, MACD, RSI, STOCH,
-# powody odrzucenia sygnału.
-DEBUG = True # włącza/wyłącza DEBUGI w kodzie
+# ─────────────────────────────────────────────
+# TRYB PRACY BOTA
+# ─────────────────────────────────────────────
+# SPOT_MODE = True → tylko LONG (BUY + EXIT)
+# SPOT_MODE = False → long + short (BUY + SELL)
+SPOT_MODE = True
 
+# W trybie debug bot drukuje pełne dane diagnostyczne
+DEBUG = True
 
 # ─────────────────────────────────────────────
 # SYMBOL / INTERWAŁY
 # ─────────────────────────────────────────────
 
-SYMBOL = "XRPUSDC"
+# SYMBOL = "XRPUSDC"
+SYMBOL = "BTCUSDT"
 
 INTERVAL_4H = "4h"
 CANDLES_4H = 300
@@ -72,11 +76,15 @@ CHECK_SLEEP_SECONDS = 10
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
+# przyszłe wsparcie dla wielu odbiorców (v2.3.4)
+# TELEGRAM_CHAT_IDS = os.getenv("TELEGRAM_CHAT_IDS", "")
+
 if TELEGRAM_BOT_TOKEN is None or TELEGRAM_CHAT_ID is None:
     raise ValueError("Brakuje TELEGRAM_BOT_TOKEN lub TELEGRAM_CHAT_ID w pliku .env")
 
-# --- ALERT STATUS CO X MINUT ---
-STATUS_ALERT_ENABLED = True      # włącz/wyłącz alerty
-STATUS_ALERT_INTERVAL = 60       # interwał w minutach (np. 60 = 1h)
+# ─────────────────────────────────────────────
+# ALERT STATUS CO X MINUT
+# ─────────────────────────────────────────────
 
-
+STATUS_ALERT_ENABLED = True
+STATUS_ALERT_INTERVAL = 60  # w minutach
