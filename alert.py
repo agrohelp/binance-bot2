@@ -1,4 +1,5 @@
-# alert.py
+# alert.py — v2.3.2 (Telegram Alerts + Status Alert)
+
 import requests
 import time
 from utils.logger import get_logger
@@ -54,6 +55,10 @@ def send_message(text: str, retries: int = 3) -> None:
     print(text)
 
 
+# ─────────────────────────────────────────────
+# ALERTY HANDLOWE
+# ─────────────────────────────────────────────
+
 def send_buy_alert(price: float) -> None:
     send_message(f"📈 <b>BUY 4H</b>\nCena: <b>{price}</b>")
 
@@ -80,3 +85,14 @@ def send_trailing_hit(price: float) -> None:
     send_message(
         f"🛑 <b>TRAILING STOP</b>\nCena: <b>{price}</b>"
     )
+
+
+# ─────────────────────────────────────────────
+# ALERT STATUSOWY (CO X MINUT)
+# ─────────────────────────────────────────────
+
+def send_status_alert(msg: str) -> None:
+    """
+    Wysyła cykliczny alert statusowy (1H/4H/1D)
+    """
+    send_message(f"⏱ <b>Alert statusowy</b>\n\n{msg}")

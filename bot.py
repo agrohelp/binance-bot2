@@ -1,9 +1,10 @@
-# bot.py — v2.3.1 (ATR PRO Engine, Dynamic TS, Binance Live, Telegram Alerts)
+# bot.py — v2.3.2 (ATR PRO Engine, Dynamic TS, Binance Live, Telegram Alerts, Status Alerts)
 
 import time
 import json
 import os
 from typing import Optional, Dict, Any, TypedDict
+import threading
 
 from utils.logger import get_logger
 from settings import (
@@ -11,6 +12,8 @@ from settings import (
     SL_PERCENT,
     TP_PERCENT,
     TRAILING_PERCENT,
+    STATUS_ALERT_ENABLED,
+    STATUS_ALERT_INTERVAL,
 )
 from strategy.strategy_4h import check_signal, get_atr_4h
 from core.signal import Signal
@@ -22,9 +25,10 @@ from alert import (
     send_tp_alert,
     send_trailing_update,
     send_trailing_hit,
+    send_status_alert,
 )
-from status_report import start_status_loop
-import threading
+
+from status_short import get_short_status
 
 logger = get_logger(__name__)
 
@@ -127,7 +131,9 @@ def main() -> None:
     state: StateDict = load_state()
 
     # status / alerty zmian w tle
-    threading.Thread(target=start_status_loop, daemon=True).start()
+
+    # timer dla cyklicznego alertu statusowego
+    last_status_alert = 0.0
 
     while True:
         try:
@@ -135,6 +141,19 @@ def main() -> None:
 
             if not isinstance(signal, Signal):
                 logger.info("Brak sygnału — czekam…")
+
+                # cykliczny alert statusowy
+                if STATUS_ALERT_ENABLED:
+                    now = time.time()
+                    if now - last_status_alert >= STATUS_ALERT_INTERVAL * 60:
+                        try:
+                            msg = get_short_status()
+                            send_status_alert(msg)
+                            logger.info("Wysłano cykliczny alert statusowy.")
+                        except Exception as e:
+                            logger.error(f"Błąd wysyłania alertu statusowego: {e}")
+                        last_status_alert = now
+
                 time.sleep(CHECK_SLEEP_SECONDS)
                 continue
 
@@ -198,7 +217,6 @@ def main() -> None:
                 # SL
                 if price <= pos.sl:
                     send_sl_alert(price)
-                    # dodatkowy SELL alert — moment wyjścia
                     send_sell_alert(price)
                     logger.info(f"SL hit @ {price}")
                     state["position"] = None
@@ -219,6 +237,18 @@ def main() -> None:
                     logger.info(f"TS hit @ {price}")
                     state["position"] = None
                     save_state(state)
+
+            # cykliczny alert statusowy również gdy jest pozycja
+            if STATUS_ALERT_ENABLED:
+                now = time.time()
+                if now - last_status_alert >= STATUS_ALERT_INTERVAL * 60:
+                    try:
+                        msg = get_short_status()
+                        send_status_alert(msg)
+                        logger.info("Wysłano cykliczny alert statusowy.")
+                    except Exception as e:
+                        logger.error(f"Błąd wysyłania alertu statusowego: {e}")
+                    last_status_alert = now
 
             time.sleep(CHECK_SLEEP_SECONDS)
 

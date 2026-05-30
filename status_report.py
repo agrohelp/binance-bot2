@@ -1,21 +1,5 @@
-"""
-status_report.py
-----------------
-Moduł odpowiedzialny za:
-- wysyłanie cyklicznych raportów na Telegram (interwał z settings.py)
-- wysyłanie alertów, gdy zmieniają się warunki rynkowe (trend 1H/1D, momentum, RSI trend, BUY/SELL diagnostyka)
-- formatowanie raportu z emoji
+# status_report.py — v2.3.2 (diagnostyka, bez wysyłania Telegram)
 
-Plik umieszczamy w katalogu głównym projektu, obok bot.py.
-"""
-
-import time
-import requests
-from settings import (
-    TELEGRAM_STATUS_INTERVAL_MINUTES,
-    TELEGRAM_BOT_TOKEN,
-    TELEGRAM_CHAT_ID,
-)
 from strategy.strategy_4h import (
     get_debug_report,
     get_state_snapshot,
@@ -25,51 +9,28 @@ from strategy.strategy_4h import (
 last_snapshot = None
 
 
-def send_telegram_message(text: str):
-    """Wysyła wiadomość na Telegram."""
-    if TELEGRAM_BOT_TOKEN is None or TELEGRAM_CHAT_ID is None:
-        print("Brak TELEGRAM_BOT_TOKEN lub TELEGRAM_CHAT_ID — sprawdź .env")
-        return
-
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": text,
-        "parse_mode": "Markdown",
-    }
-    try:
-        requests.post(url, json=payload, timeout=10)
-    except Exception as e:
-        print(f"Telegram error: {e}")
-
-
-def start_status_loop():
-    """Główna pętla wysyłająca raporty i alerty zmian."""
+def detect_market_change() -> str | None:
+    """
+    Sprawdza, czy zmieniły się warunki rynkowe.
+    Zwraca tekst raportu jeśli jest zmiana, inaczej None.
+    """
     global last_snapshot
 
-    last_sent = 0
-    interval = TELEGRAM_STATUS_INTERVAL_MINUTES * 60
+    snapshot = get_state_snapshot()
 
-    while True:
-        now = time.time()
+    if last_snapshot is None:
+        last_snapshot = snapshot
+        return None
 
-        # pobierz aktualny stan rynku
-        snapshot = get_state_snapshot()
+    if snapshot != last_snapshot:
+        last_snapshot = snapshot
+        return "⚠️ *Zmiana warunków rynkowych!* ⚠️\n\n" + get_debug_report()
 
-        # pierwszy snapshot
-        if last_snapshot is None:
-            last_snapshot = snapshot
+    return None
 
-        # wykrywanie zmian
-        if snapshot != last_snapshot:
-            send_telegram_message(
-                "⚠️ *Zmiana warunków rynkowych!* ⚠️\n\n" + get_debug_report()
-            )
-            last_snapshot = snapshot
 
-        # raport interwałowy
-        if now - last_sent >= interval:
-            send_telegram_message(get_debug_report())
-            last_sent = now
-
-        time.sleep(5)
+def get_full_status() -> str:
+    """
+    Zwraca pełny raport diagnostyczny 4H.
+    """
+    return get_debug_report()
