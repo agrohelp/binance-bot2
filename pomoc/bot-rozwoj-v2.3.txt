@@ -1,0 +1,59 @@
+🟢 Release Notes — v2.3  JEST Na GitHUB
+🚀 Wersja 2.3 — ATR PRO, lepsze wejścia i stabilność
+Wersja v2.3 to największy upgrade strategii od początku projektu.
+Skupia się na trzech kluczowych obszarach:
+
+precyzyjniejszy trailing stop (ATR PRO)
+
+wcześniejsze, ale nadal bezpieczne wejścia BUY
+
+stabilność i odporność na błędy danych z Binance
+
+✨ Nowe funkcje
+ATR PRO Engine
+ATR oparty na EMA (bardziej responsywny niż klasyczny ATR SMA).
+
+Minimalny i maksymalny próg ATR, aby uniknąć spike’ów.
+
+Ochrona przed błędami danych (np. świeca z zerowym zakresem).
+
+Stabilne wartości dla trailing stopu nawet przy dużej zmienności.
+
+Dynamiczny Trailing Stop
+TS nigdy nie spada (tylko rośnie).
+
+TS nie może być poniżej SL.
+
+TS nie może być powyżej ceny.
+
+TS reaguje na zmienność w sposób kontrolowany i przewidywalny.
+
+🔧 Zmiany
+Strategia 4H — poluzowane wejścia
+EMA trend: próg zmniejszony z 0.1% → 0.03%.
+
+STOCH cross: próg zmniejszony z 0.5 → 0.2.
+
+MACD: dodano tolerancję na szum 0.0001.
+
+Lepsza diagnostyka filtrów BUY/SELL w logach.
+
+Stabilniejsze wyliczanie wskaźników.
+
+Bot (bot.py)
+TS inicjalizowany na poziomie SL.
+
+ATR PRO używany przy wejściu i aktualizacji trailing stopu.
+
+Lepsza obsługa wyjątków i sanity-checków.
+
+🛠️ Poprawki
+Naprawiono sanity-checki świec i wskaźników.
+
+Usunięto błędy konwersji danych z Binance.
+
+Ustabilizowano logi i obsługę błędów runtime.
+
+📌 Podsumowanie
+Wersja v2.3 to solidny krok naprzód:
+bardziej inteligentny trailing stop, wcześniejsze wejścia, stabilniejsza strategia i lepsza odporność na błędy danych.

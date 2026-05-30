@@ -1,0 +1,89 @@
+🟢 CO JUŻ DZIAŁA TERAZ (100% pewne alerty)
+✔ 1. Alert wejścia (BUY EXECUTED)
+Wysyłany w momencie otwarcia pozycji:
+
+send_buy_alert(entry)
+
+✔ 2. Alert wyjścia (SELL EXECUTED)
+Wysyłany przy każdym zamknięciu pozycji:
+
+SL → send_sl_alert + send_sell_alert
+
+TP → send_tp_alert + send_sell_alert
+
+TS → send_trailing_hit + send_sell_alert
+
+✔ 3. Alert aktualizacji trailing stopu (TS UPDATE)
+Gdy ATR PRO podniesie TS:
+
+send_trailing_update(new_ts)
+
+✔ 4. Alert statusowy co X minut
+Z emoji, bez czasu, pełna diagnostyka:
+
+TREND 1H
+
+TREND 1D
+
+DEBUG 4H
+
+BUY diagnostyka
+
+SELL diagnostyka
+
+✔ 5. Alert zmian warunków rynkowych
+Gdy zmieni się:
+
+trend 1H
+
+momentum 1H
+
+RSI trend 1H
+
+trend 1D
+
+big trend 1D
+
+BUY diagnostyka
+
+SELL diagnostyka
+
+To działa dzięki:
+
+get_state_snapshot()
+
+porównaniu snapshotów w status_report.py
+
+🟡 CO JESZCZE NIE DZIAŁA (ale możemy dodać)
+❌ Alert predykcyjny BUY/SELL
+Czyli:
+
+„⚠️ BUY możliwy — 8/9 filtrów OK”
+
+„⚠️ SELL możliwy — 3/4 filtrów OK”
+
+To nie jest jeszcze dodane, ale mamy już wszystkie dane, żeby to zrobić.
+
+🟢 PODSUMOWANIE
+✔ TAK — w obecnym stanie otrzymasz alerty:
+wejścia
+
+wyjścia
+
+SL
+
+TP
+
+TS
+
+TS update
+
+status co X minut
+
+zmiana warunków rynkowych
+
+❌ NIE — nie otrzymasz jeszcze alertów predykcyjnych (BUY możliwy / SELL możliwy).
+🟢 Chcesz, żebym teraz dodał alerty predykcyjne?
+Dodaj alerty predykcyjne BUY/SELL
+
+To będzie kolejny logiczny krok — i zrobię to tak, że będzie działać idealnie z Twoją strategią.

@@ -225,19 +225,16 @@ def check_signal(df_override=None) -> Signal | None:
 
     # 4) BUY — poluzowane wejścia
     ema_distance = last["ema_fast"] - last["ema_slow"]
-    # było 0.1%, teraz 0.03% — łapie trend wcześniej
     ema_ok = ema_distance > (last["close"] * 0.0003)
 
     stoch_cross = (
         prev["stoch_k"] < prev["stoch_d"]
         and last["stoch_k"] > last["stoch_d"]
-        # było 0.5, teraz 0.2 — mniej rygorystyczny cross
         and abs(last["stoch_k"] - last["stoch_d"]) > 0.2
     )
 
     buy_checks = {
         "EMA trend (ema_fast > ema_slow + 0.03%)": ema_ok,
-        # tolerancja na szum MACD
         "MACD (macd > macd_signal)": last["macd"] > last["macd_signal"] - 0.0001,
         "RSI (< 70)": last["rsi"] < RSI_OVERBOUGHT_4H,
         "STOCH cross (K > D)": stoch_cross,
@@ -278,3 +275,184 @@ def check_signal(df_override=None) -> Signal | None:
 
     logger.info("4H: brak sygnału")
     return None
+
+
+# ─────────────────────────────────────────────
+#  DODATKOWE FUNKCJE DLA TELEGRAM / STATUS
+# ─────────────────────────────────────────────
+def get_trend_1h():
+    h1 = analyze_1h()
+    return {
+        "trend": h1["trend"],
+        "momentum": h1["momentum"],
+        "rsi_trend": h1["rsi_trend"],
+    }
+
+
+def get_trend_1d():
+    d1 = analyze_1d()
+    return {
+        "trend": d1["trend"],
+        "big_trend": d1["big_trend"],
+    }
+
+
+def _get_last_context():
+    df = load_df_4h()
+    if df is None:
+        return None, None, None, None
+
+    if not sanity_check_candles(df, logger, "4H-STATUS"):
+        return None, None, None, None
+
+    try:
+        df["ema_fast"] = ema(df["close"], EMA_FAST)
+        df["ema_slow"] = ema(df["close"], EMA_SLOW)
+
+        macd_df = macd(df["close"], MACD_FAST, MACD_SLOW, MACD_SIGNAL)
+        df["macd"] = macd_df["macd"]
+        df["macd_signal"] = macd_df["signal"]
+        df["macd_hist"] = macd_df["hist"]
+
+        df["rsi"] = rsi(df["close"], RSI_PERIOD)
+
+        stoch_df = stochastic(
+            df["high"],
+            df["low"],
+            df["close"],
+            STO_K,
+            STO_D,
+        )
+        df["stoch_k"] = stoch_df["k"]
+        df["stoch_d"] = stoch_df["d"]
+
+        atr_value = compute_atr(df)
+        df["atr"] = np.nan
+        if atr_value is not None:
+            df.iloc[-1, df.columns.get_loc("atr")] = atr_value
+
+    except Exception:
+        return None, None, None, None
+
+    last = df.iloc[-1]
+    prev = df.iloc[-2]
+    price = float(last["close"])
+    return df, last, prev, price
+
+
+def get_buy_diagnostics():
+    df, last, prev, price = _get_last_context()
+    if df is None:
+        return {}
+
+    h1 = analyze_1h()
+    d1 = analyze_1d()
+
+    ema_distance = last["ema_fast"] - last["ema_slow"]
+    ema_ok = ema_distance > (last["close"] * 0.0003)
+
+    stoch_cross = (
+        prev["stoch_k"] < prev["stoch_d"]
+        and last["stoch_k"] > last["stoch_d"]
+        and abs(last["stoch_k"] - last["stoch_d"]) > 0.2
+    )
+
+    buy_checks = {
+        "EMA trend (ema_fast > ema_slow + 0.03%)": "OK" if ema_ok else "FAIL",
+        "MACD (macd > macd_signal)": "OK" if last["macd"] > last["macd_signal"] - 0.0001 else "FAIL",
+        "RSI (< 70)": "OK" if last["rsi"] < RSI_OVERBOUGHT_4H else "FAIL",
+        "STOCH cross (K > D)": "OK" if stoch_cross else "FAIL",
+        "Trend 1D": "OK" if d1["trend"] == "UP" else "FAIL",
+        "Big trend 1D": "OK" if d1["big_trend"] == "UP" else "FAIL",
+        "Trend 1H": "OK" if h1["trend"] == "UP" else "FAIL",
+        "Momentum 1H": "OK" if h1["momentum"] == "UP" else "FAIL",
+        "RSI trend 1H": "OK" if h1["rsi_trend"] == "UP" else "FAIL",
+    }
+    return buy_checks
+
+
+def get_sell_diagnostics():
+    df, last, prev, price = _get_last_context()
+    if df is None:
+        return {}
+
+    sell_checks = {
+        "EMA trend (ema_fast < ema_slow)": "OK" if last["ema_fast"] < last["ema_slow"] else "FAIL",
+        "MACD (macd < macd_signal)": "OK" if last["macd"] < last["macd_signal"] else "FAIL",
+        "RSI (> 30)": "OK" if last["rsi"] > RSI_OVERSOLD_4H else "FAIL",
+        "STOCH cross (K < D)": "OK" if last["stoch_k"] < last["stoch_d"] else "FAIL",
+    }
+    return sell_checks
+
+
+def get_debug_report():
+    trend_1h = get_trend_1h()
+    trend_1d = get_trend_1d()
+    df, last, prev, price = _get_last_context()
+    if df is None:
+        return "Brak danych 4H do raportu."
+
+    debug = {
+        "price": float(last["close"]),
+        "ema_fast": float(last["ema_fast"]),
+        "ema_slow": float(last["ema_slow"]),
+        "macd": float(last["macd"]),
+        "macd_signal": float(last["macd_signal"]),
+        "rsi": float(last["rsi"]),
+        "stoch_k": float(last["stoch_k"]),
+        "stoch_d": float(last["stoch_d"]),
+        "atr": float(last["atr"]) if not np.isnan(last["atr"]) else None,
+    }
+
+    buy_diag = get_buy_diagnostics()
+    sell_diag = get_sell_diagnostics()
+
+    msg = "📊 *Status 4H*\n\n"
+
+    msg += "⏱ *TREND 1H:*\n"
+    msg += f"• 📈 trend: {trend_1h['trend']}\n"
+    msg += f"• ⚡ momentum: {trend_1h['momentum']}\n"
+    msg += f"• 🎯 rsi_trend: {trend_1h['rsi_trend']}\n\n"
+
+    msg += "📅 *TREND 1D:*\n"
+    msg += f"• 📈 trend: {trend_1d['trend']}\n"
+    msg += f"• 🧭 big_trend: {trend_1d['big_trend']}\n\n"
+
+    msg += "🧪 *DEBUG 4H:*\n"
+    msg += (
+        f"price={debug['price']}, "
+        f"ema_fast={debug['ema_fast']}, "
+        f"ema_slow={debug['ema_slow']}, "
+        f"macd={debug['macd']}, "
+        f"macd_signal={debug['macd_signal']}, "
+        f"rsi={debug['rsi']}, "
+        f"stoch_k={debug['stoch_k']}, "
+        f"stoch_d={debug['stoch_d']}, "
+        f"atr={debug['atr']}\n\n"
+    )
+
+    msg += "🟢 *BUY diagnostyka:*\n"
+    for k, v in buy_diag.items():
+        msg += f"• {k}: {v}\n"
+    msg += "\n"
+
+    msg += "🔴 *SELL diagnostyka:*\n"
+    for k, v in sell_diag.items():
+        msg += f"• {k}: {v}\n"
+
+    return msg
+
+
+def get_state_snapshot():
+    """Snapshot do wykrywania zmian dla status_report."""
+    trend_1h = get_trend_1h()
+    trend_1d = get_trend_1d()
+    buy_diag = get_buy_diagnostics()
+    sell_diag = get_sell_diagnostics()
+
+    return {
+        "trend_1h": trend_1h,
+        "trend_1d": trend_1d,
+        "buy_diag": buy_diag,
+        "sell_diag": sell_diag,
+    }

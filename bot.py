@@ -1,4 +1,4 @@
-# bot.py — v2.3 (ATR PRO Engine, Dynamic TS, Binance Live)
+# bot.py — v2.3.1 (ATR PRO Engine, Dynamic TS, Binance Live, Telegram Alerts)
 
 import time
 import json
@@ -23,6 +23,8 @@ from alert import (
     send_trailing_update,
     send_trailing_hit,
 )
+from status_report import start_status_loop
+import threading
 
 logger = get_logger(__name__)
 
@@ -124,6 +126,9 @@ def main() -> None:
     logger.info("Bot startuje…")
     state: StateDict = load_state()
 
+    # status / alerty zmian w tle
+    threading.Thread(target=start_status_loop, daemon=True).start()
+
     while True:
         try:
             signal = check_signal()
@@ -133,7 +138,7 @@ def main() -> None:
                 time.sleep(CHECK_SLEEP_SECONDS)
                 continue
 
-            price: float = signal.price
+            price: float = signal.price if signal.price is not None else 0.0
 
             # BUY — wejście
             if signal.side == "BUY" and state["position"] is None:
@@ -161,8 +166,9 @@ def main() -> None:
 
                 state["position"] = pos.to_dict()
                 save_state(state)
-                send_buy_alert(entry)
 
+                # ALERT: moment wejścia
+                send_buy_alert(entry)
                 logger.info(
                     f"BUY @ {entry}, SL={sl}, TP={tp}, TS={ts} (ATR PRO)"
                 )
@@ -192,6 +198,8 @@ def main() -> None:
                 # SL
                 if price <= pos.sl:
                     send_sl_alert(price)
+                    # dodatkowy SELL alert — moment wyjścia
+                    send_sell_alert(price)
                     logger.info(f"SL hit @ {price}")
                     state["position"] = None
                     save_state(state)
@@ -199,6 +207,7 @@ def main() -> None:
                 # TP
                 elif price >= pos.tp:
                     send_tp_alert(price)
+                    send_sell_alert(price)
                     logger.info(f"TP hit @ {price}")
                     state["position"] = None
                     save_state(state)
@@ -206,6 +215,7 @@ def main() -> None:
                 # TS
                 elif price <= pos.ts:
                     send_trailing_hit(price)
+                    send_sell_alert(price)
                     logger.info(f"TS hit @ {price}")
                     state["position"] = None
                     save_state(state)

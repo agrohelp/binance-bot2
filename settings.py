@@ -71,3 +71,9 @@ CHECK_SLEEP_SECONDS = 10
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+
+TELEGRAM_STATUS_INTERVAL_MINUTES = 60  # co ile minut wysyłać raport
+if TELEGRAM_BOT_TOKEN is None or TELEGRAM_CHAT_ID is None:
+    raise ValueError("Brakuje TELEGRAM_BOT_TOKEN lub TELEGRAM_CHAT_ID w pliku .env")
+
+
