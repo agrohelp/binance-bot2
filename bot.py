@@ -1,4 +1,5 @@
-# bot.py
+# bot.py — v2.3 (ATR PRO Engine, Dynamic TS, Binance Live)
+
 import time
 import json
 import os
@@ -11,7 +12,7 @@ from settings import (
     TP_PERCENT,
     TRAILING_PERCENT,
 )
-from strategy.strategy_4h import check_signal
+from strategy.strategy_4h import check_signal, get_atr_4h
 from core.signal import Signal
 from core.position import Position
 from alert import (
@@ -24,6 +25,9 @@ from alert import (
 )
 
 logger = get_logger(__name__)
+
+# ATR PRO — mnożnik trailing stopu
+ATR_MULTIPLIER = 2.5
 
 
 class StateDict(TypedDict):
@@ -63,6 +67,59 @@ def save_state(state: StateDict) -> None:
         logger.error(f"Błąd zapisu state.json: {e}")
 
 
+# ─────────────────────────────────────────────
+# ATR PRO — dopieszczony dynamiczny trailing stop
+# ─────────────────────────────────────────────
+def compute_trailing_stop(
+    price: float,
+    atr: float | None,
+    entry: float,
+    sl: float,
+    current_ts: float,
+) -> float:
+    """
+    ATR PRO:
+    - używa ATR EMA
+    - ma minimalny i maksymalny próg
+    - TS nigdy nie spada
+    - TS nigdy nie jest poniżej SL
+    - TS nigdy nie jest powyżej ceny
+    """
+
+    # fallback gdy brak ATR
+    if atr is None:
+        ts = price * (1 - TRAILING_PERCENT)
+        return max(ts, current_ts, sl)
+
+    # minimalny ATR (żeby TS nie był za ciasny)
+    min_atr = price * 0.0001
+    if atr < min_atr:
+        atr = min_atr
+
+    # maksymalny ATR (żeby nie było spike’ów)
+    max_atr = price * 0.2
+    if atr > max_atr:
+        atr = max_atr
+
+    # ATR PRO TS
+    ts = price - atr * ATR_MULTIPLIER
+
+    # TS nie może spaść
+    ts = max(ts, current_ts)
+
+    # TS nie może być poniżej SL
+    ts = max(ts, sl)
+
+    # TS nie może być powyżej ceny
+    if ts > price:
+        ts = price * 0.999
+
+    return ts
+
+
+# ─────────────────────────────────────────────
+# GŁÓWNA PĘTLA BOTA
+# ─────────────────────────────────────────────
 def main() -> None:
     logger.info("Bot startuje…")
     state: StateDict = load_state()
@@ -83,7 +140,16 @@ def main() -> None:
                 entry = price
                 sl = entry * (1 - SL_PERCENT)
                 tp = entry * (1 + TP_PERCENT)
-                ts = entry * (1 - TRAILING_PERCENT)
+
+                # ATR PRO — pobranie ATR
+                atr = get_atr_4h()
+                ts = compute_trailing_stop(
+                    price=entry,
+                    atr=atr,
+                    entry=entry,
+                    sl=sl,
+                    current_ts=sl,  # start TS = SL
+                )
 
                 pos = Position(
                     side="LONG",
@@ -96,33 +162,48 @@ def main() -> None:
                 state["position"] = pos.to_dict()
                 save_state(state)
                 send_buy_alert(entry)
-                logger.info(f"BUY @ {entry}, SL={sl}, TP={tp}, TS={ts}")
+
+                logger.info(
+                    f"BUY @ {entry}, SL={sl}, TP={tp}, TS={ts} (ATR PRO)"
+                )
 
             # Obsługa otwartej pozycji
             pos_dict = state["position"]
             if pos_dict is not None:
                 pos = Position.from_dict(pos_dict)
 
-                new_ts = price * (1 - TRAILING_PERCENT)
+                # ATR PRO — aktualizacja trailing stopu
+                atr = get_atr_4h()
+                new_ts = compute_trailing_stop(
+                    price=price,
+                    atr=atr,
+                    entry=pos.entry,
+                    sl=pos.sl,
+                    current_ts=pos.ts,
+                )
+
                 if new_ts > pos.ts:
                     pos.ts = new_ts
                     state["position"] = pos.to_dict()
                     save_state(state)
                     send_trailing_update(new_ts)
-                    logger.info(f"Trailing stop update: {new_ts}")
+                    logger.info(f"ATR PRO TS update: {new_ts}")
 
+                # SL
                 if price <= pos.sl:
                     send_sl_alert(price)
                     logger.info(f"SL hit @ {price}")
                     state["position"] = None
                     save_state(state)
 
+                # TP
                 elif price >= pos.tp:
                     send_tp_alert(price)
                     logger.info(f"TP hit @ {price}")
                     state["position"] = None
                     save_state(state)
 
+                # TS
                 elif price <= pos.ts:
                     send_trailing_hit(price)
                     logger.info(f"TS hit @ {price}")
